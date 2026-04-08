@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, act, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import Overview from "./Overview";
 import "@testing-library/jest-dom";
 
@@ -63,7 +64,7 @@ afterEach(() => {
 describe("<Overview /> spec", () => {
   it("renders sidebar with app title and region", async () => {
     await act(async () => {
-      render(<Overview />);
+      render(<MemoryRouter><Overview /></MemoryRouter>);
     });
     expect(screen.getByText("SQS Admin UI")).toBeInTheDocument();
     await waitFor(() => {
@@ -73,7 +74,7 @@ describe("<Overview /> spec", () => {
 
   it("renders queue list from API", async () => {
     await act(async () => {
-      render(<Overview />);
+      render(<MemoryRouter><Overview /></MemoryRouter>);
     });
     await waitFor(() => {
       expect(screen.getByText("test-queue")).toBeInTheDocument();
@@ -94,7 +95,7 @@ describe("<Overview /> spec", () => {
     }) as typeof fetch;
 
     await act(async () => {
-      render(<Overview />);
+      render(<MemoryRouter><Overview /></MemoryRouter>);
     });
 
     await waitFor(() => {
@@ -110,7 +111,7 @@ describe("<Overview /> spec", () => {
     }) as typeof fetch;
 
     await act(async () => {
-      render(<Overview />);
+      render(<MemoryRouter><Overview /></MemoryRouter>);
     });
 
     expect(screen.getByRole("button", { name: "Delete Queue" })).toBeDisabled();
@@ -120,7 +121,7 @@ describe("<Overview /> spec", () => {
 
   it("enables action buttons when queues exist", async () => {
     await act(async () => {
-      render(<Overview />);
+      render(<MemoryRouter><Overview /></MemoryRouter>);
     });
 
     await waitFor(() => {
@@ -132,7 +133,7 @@ describe("<Overview /> spec", () => {
 
   it("renders messages for selected queue", async () => {
     await act(async () => {
-      render(<Overview />);
+      render(<MemoryRouter><Overview /></MemoryRouter>);
     });
 
     await waitFor(() => {
@@ -142,7 +143,7 @@ describe("<Overview /> spec", () => {
 
   it("selects a queue when clicked in sidebar", async () => {
     await act(async () => {
-      render(<Overview />);
+      render(<MemoryRouter><Overview /></MemoryRouter>);
     });
 
     await waitFor(() => {
@@ -159,7 +160,7 @@ describe("<Overview /> spec", () => {
 
   it("displays version from env", async () => {
     await act(async () => {
-      render(<Overview />);
+      render(<MemoryRouter><Overview /></MemoryRouter>);
     });
     expect(screen.getByText("1.0.0-test")).toBeInTheDocument();
   });
@@ -170,7 +171,7 @@ describe("<Overview /> spec", () => {
     }) as typeof fetch;
 
     await act(async () => {
-      render(<Overview />);
+      render(<MemoryRouter><Overview /></MemoryRouter>);
     });
 
     await waitFor(() => {
@@ -184,7 +185,7 @@ describe("<Overview /> spec", () => {
     }) as typeof fetch;
 
     await act(async () => {
-      render(<Overview />);
+      render(<MemoryRouter><Overview /></MemoryRouter>);
     });
 
     await waitFor(() => {
@@ -202,7 +203,7 @@ describe("<Overview /> spec", () => {
 
   it("calls delete queue API when Delete Queue is clicked", async () => {
     await act(async () => {
-      render(<Overview />);
+      render(<MemoryRouter><Overview /></MemoryRouter>);
     });
 
     await waitFor(() => {
@@ -223,7 +224,7 @@ describe("<Overview /> spec", () => {
 
   it("calls purge queue API when Purge Queue is clicked", async () => {
     await act(async () => {
-      render(<Overview />);
+      render(<MemoryRouter><Overview /></MemoryRouter>);
     });
 
     await waitFor(() => {
@@ -244,7 +245,7 @@ describe("<Overview /> spec", () => {
 
   it("creates a queue via the Create Queue dialog", async () => {
     await act(async () => {
-      render(<Overview />);
+      render(<MemoryRouter><Overview /></MemoryRouter>);
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Create Queue" }));
@@ -262,5 +263,125 @@ describe("<Overview /> spec", () => {
         body: expect.stringContaining('"CreateQueue"'),
       }),
     );
+  });
+
+  it("renders global pause button and toggles icon on click", async () => {
+    await act(async () => {
+      render(<MemoryRouter><Overview /></MemoryRouter>);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Pause all polling")).toBeInTheDocument();
+    });
+
+    // Click to pause
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText("Pause all polling"));
+    });
+
+    expect(screen.getByLabelText("Resume all polling")).toBeInTheDocument();
+
+    // Click to resume
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText("Resume all polling"));
+    });
+
+    expect(screen.getByLabelText("Pause all polling")).toBeInTheDocument();
+  });
+
+  it("stops polling when global pause is active", async () => {
+    await act(async () => {
+      render(<MemoryRouter><Overview /></MemoryRouter>);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("test-queue")).toBeInTheDocument();
+    });
+
+    // Record GetMessages call count before pause
+    const getMessageCallsBefore = (fetchHandler as jest.Mock).mock.calls
+      .filter(([, opts]: [string, RequestInit?]) => opts?.body && JSON.parse(opts.body as string).action === "GetMessages").length;
+
+    // Click pause
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText("Pause all polling"));
+    });
+
+    // Advance timers by 9 seconds (3 polling intervals)
+    await act(async () => {
+      jest.advanceTimersByTime(9000);
+    });
+
+    const getMessageCallsAfter = (fetchHandler as jest.Mock).mock.calls
+      .filter(([, opts]: [string, RequestInit?]) => opts?.body && JSON.parse(opts.body as string).action === "GetMessages").length;
+
+    // No new GetMessages calls should have been made while paused
+    expect(getMessageCallsAfter).toBe(getMessageCallsBefore);
+  });
+
+  it("renders per-queue polling dots with aria-labels", async () => {
+    await act(async () => {
+      render(<MemoryRouter><Overview /></MemoryRouter>);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Pause polling for test-queue")).toBeInTheDocument();
+      expect(screen.getByLabelText("Pause polling for orders.fifo")).toBeInTheDocument();
+    });
+  });
+
+  it("toggles per-queue polling dot without selecting the queue", async () => {
+    await act(async () => {
+      render(<MemoryRouter><Overview /></MemoryRouter>);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Pause polling for test-queue")).toBeInTheDocument();
+    });
+
+    // Click the dot to pause test-queue
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText("Pause polling for test-queue"));
+    });
+
+    // Dot should now show "Resume" label
+    expect(screen.getByLabelText("Resume polling for test-queue")).toBeInTheDocument();
+
+    // Other queue dot should still show "Pause" (unaffected)
+    expect(screen.getByLabelText("Pause polling for orders.fifo")).toBeInTheDocument();
+  });
+
+  it("shows empty state after 3 consecutive empty polls", async () => {
+    // Override fetch to return empty messages array
+    global.fetch = jest.fn(async (_url: string, options?: RequestInit) => {
+      if (!options || options.method === "GET") {
+        return Response.json(mockQueues);
+      }
+      const body = JSON.parse(options.body as string);
+      switch (body.action) {
+        case "GetRegion":
+          return Response.json({ region: "us-east-1" });
+        case "GetMessages":
+          return Response.json([]);  // Always empty
+        default:
+          return Response.json({});
+      }
+    }) as typeof fetch;
+
+    await act(async () => {
+      render(<MemoryRouter><Overview /></MemoryRouter>);
+    });
+
+    // Advance 2 polling intervals (initial fetch is 1, need 2 more = 3 total consecutive empties)
+    await act(async () => {
+      jest.advanceTimersByTime(3000);
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(3000);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("No messages in this queue")).toBeInTheDocument();
+    });
   });
 });

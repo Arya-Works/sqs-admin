@@ -12,6 +12,10 @@ export default class FixJSDOMEnvironment extends JSDOMEnvironment {
     this.global.Request = Request;
     this.global.Response = Response;
 
+    // react-router-dom v7 uses TextEncoder internally; jsdom doesn't expose it
+    this.global.TextEncoder = TextEncoder;
+    this.global.TextDecoder = TextDecoder;
+
     this.global.process.env.DEV = 'true';
     this.global.process.env.REACT_APP_VERSION = '1.0.0-test';
   }
