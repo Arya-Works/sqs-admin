@@ -10,6 +10,7 @@ type SqsMessage struct {
 	MessageId         string            `json:"messageId"`
 	MessageBody       string            `json:"messageBody"`
 	MessageAttributes map[string]string `json:"messageAttributes"`
+	CustomAttributes  map[string]string `json:"customAttributes,omitempty"`
 }
 
 type Request struct {

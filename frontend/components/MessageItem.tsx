@@ -49,7 +49,7 @@ const MessageItem = (props: { data: SqsMessage }) => {
           `}
         />
         <CardContent>
-          {props.data.messageAttributes?.CustomAttributes ? (
+          {props.data.customAttributes && Object.keys(props.data.customAttributes).length > 0 ? (
             <Accordion>
               <AccordionSummary
                 expandIcon={<ExpandMoreIcon />}
@@ -59,10 +59,7 @@ const MessageItem = (props: { data: SqsMessage }) => {
                 <Typography>Message Attributes</Typography>
               </AccordionSummary>
               <AccordionDetails>
-                {Object.entries(
-                  // @ts-ignore
-                  JSON.parse(props.data.messageAttributes.CustomAttributes),
-                ).map(([key, value]) => {
+                {Object.entries(props.data.customAttributes).map(([key, value]) => {
                   return (
                     <Box key={key}>
                       <Divider />

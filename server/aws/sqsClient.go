@@ -66,22 +66,18 @@ func GetMessages(queueUrl string) ([]types.SqsMessage, error) {
 		return nil, err
 	}
 	for _, message := range messages.Messages {
-		customAttributes := make(map[string]string)
+		customAttrs := make(map[string]string)
 		for key, val := range message.MessageAttributes {
-			customAttributes[key] = *val.StringValue
-		}
-		if len(customAttributes) > 0 {
-			jsonString, err := json.Marshal(customAttributes)
-			if err != nil {
-				fmt.Println("Error marshaling map to JSON:", err)
+			if val.StringValue != nil {
+				customAttrs[key] = *val.StringValue
 			}
-			message.Attributes["CustomAttributes"] = string(jsonString)
 		}
 
 		sqsMessages = append(sqsMessages, types.SqsMessage{
 			MessageId:         *message.MessageId,
 			MessageBody:       *message.Body,
 			MessageAttributes: message.Attributes,
+			CustomAttributes:  customAttrs,
 		})
 	}
 	return sqsMessages, nil

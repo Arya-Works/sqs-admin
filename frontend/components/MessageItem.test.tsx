@@ -51,10 +51,7 @@ describe("<MessageItem /> spec", () => {
   it("renders custom attributes accordion when present", () => {
     const messageWithAttrs = {
       ...baseMessage,
-      messageAttributes: {
-        ...baseMessage.messageAttributes,
-        CustomAttributes: JSON.stringify({ env: "prod", priority: "high" }),
-      },
+      customAttributes: { env: "prod", priority: "high" },
     };
     render(<MessageItem data={messageWithAttrs} />);
     expect(screen.getByText("Message Attributes")).toBeInTheDocument();

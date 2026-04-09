@@ -35,6 +35,7 @@ export interface AwsRegion {
 export interface SqsMessage {
   messageBody: string;
   messageId?: string;
+  customAttributes?: Record<string, string>;
   messageAttributes?:
     | {
         ApproximateFirstReceiveTimestamp?: string;
@@ -44,7 +45,6 @@ export interface SqsMessage {
         SenderId?: string;
         SentTimestamp?: string;
         SequenceNumber?: string;
-        CustomAttributes?: string | { [key: string]: string };
       }
     | undefined;
 }
