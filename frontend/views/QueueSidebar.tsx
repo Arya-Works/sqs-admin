@@ -2,6 +2,7 @@ import React from "react";
 import {
   Box,
   Button,
+  Chip,
   Divider,
   Drawer,
   GlobalStyles,
@@ -173,6 +174,15 @@ const QueueSidebar = ({
                       },
                     }}
                   />
+                  {(() => {
+                    const count = parseInt(
+                      queue.QueueAttributes?.ApproximateNumberOfMessages ?? "0",
+                      10,
+                    );
+                    return count > 0 ? (
+                      <Chip label={count} size="small" sx={{ ml: 1 }} />
+                    ) : null;
+                  })()}
                 </ListItemButton>
               </ListItem>
             );

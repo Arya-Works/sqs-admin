@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import Chip from "@mui/material/Chip";
 import Grid from "@mui/material/Grid";
 import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
@@ -6,6 +7,7 @@ import Typography from "@mui/material/Typography";
 interface QueueHeaderProps {
   lastUpdatedAt: Date | null;
   consecutiveEmptyCount: React.MutableRefObject<number>;
+  approximateMessageCount?: string;
 }
 
 /** Formats a Date as a human-readable relative time string. */
@@ -18,7 +20,7 @@ const formatRelativeTime = (date: Date): string => {
 
 /** Messages toolbar showing header and relative time since last poll. Owns the
  *  1-second forceUpdate ticker — QueueHeader is the sole consumer of formatRelativeTime. */
-const QueueHeader = ({ lastUpdatedAt, consecutiveEmptyCount }: QueueHeaderProps) => {
+const QueueHeader = ({ lastUpdatedAt, consecutiveEmptyCount, approximateMessageCount }: QueueHeaderProps) => {
   const [, forceUpdate] = useState(0);
 
   // Re-render every second so formatRelativeTime stays current.
@@ -32,6 +34,14 @@ const QueueHeader = ({ lastUpdatedAt, consecutiveEmptyCount }: QueueHeaderProps)
     <Grid size={{ xs: 12 }}>
       <Toolbar>
         <Typography variant="h6">Messages</Typography>
+        {approximateMessageCount !== undefined &&
+          parseInt(approximateMessageCount, 10) > 0 && (
+            <Chip
+              label={parseInt(approximateMessageCount, 10)}
+              size="small"
+              sx={{ ml: 1 }}
+            />
+        )}
         {lastUpdatedAt && consecutiveEmptyCount.current > 0 && consecutiveEmptyCount.current < 3 && (
           <Typography variant="body2" sx={{ ml: "auto", color: "text.secondary" }} aria-live="polite">
             {formatRelativeTime(lastUpdatedAt)}

@@ -32,7 +32,11 @@ const QueueDetail = ({
 }: QueueDetailProps) => {
   return (
     <Box sx={{ flexGrow: 1 }}>
-      <QueueHeader lastUpdatedAt={lastUpdatedAt} consecutiveEmptyCount={consecutiveEmptyCount} />
+      <QueueHeader
+        lastUpdatedAt={lastUpdatedAt}
+        consecutiveEmptyCount={consecutiveEmptyCount}
+        approximateMessageCount={selectedQueue?.QueueAttributes?.ApproximateNumberOfMessages}
+      />
       <Grid size={{ xs: 12 }}>
         {error !== "" ? (
           <Container maxWidth="md">

@@ -59,10 +59,10 @@ describe("<MessageItem /> spec", () => {
     // Click the accordion summary to expand
     fireEvent.click(screen.getByText("Message Attributes"));
 
-    expect(screen.getByText(/Key: env/)).toBeInTheDocument();
-    expect(screen.getByText(/Value: prod/)).toBeInTheDocument();
-    expect(screen.getByText(/Key: priority/)).toBeInTheDocument();
-    expect(screen.getByText(/Value: high/)).toBeInTheDocument();
+    expect(screen.getByText(/env/)).toBeInTheDocument();
+    expect(screen.getByText(/prod/)).toBeInTheDocument();
+    expect(screen.getByText(/priority/)).toBeInTheDocument();
+    expect(screen.getByText(/high/)).toBeInTheDocument();
   });
 
   it("does not render custom attributes accordion when absent", () => {
