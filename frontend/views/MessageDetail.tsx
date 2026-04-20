@@ -6,12 +6,16 @@ import {
   Box,
   Button,
   ButtonGroup,
+  Dialog,
+  DialogActions,
+  DialogTitle,
   Divider,
   IconButton,
   Tooltip,
   Typography,
 } from "@mui/material";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { JSONTree } from "react-json-tree";
 import { SqsMessage } from "../types";
@@ -40,13 +44,15 @@ const LIGHT_THEME = {
 
 interface MessageDetailProps {
   message: SqsMessage | null;
+  onDelete?: (message: SqsMessage) => void;
 }
 
 /** Right panel: full message body, attributes, and metadata. Empty state when no message selected. */
-const MessageDetail = ({ message }: MessageDetailProps) => {
+const MessageDetail = ({ message, onDelete }: MessageDetailProps) => {
   const [attrExpanded, setAttrExpanded] = useState(false);
   const [bodyView, setBodyView] = useState<"tree" | "raw">("tree");
   const [copied, setCopied] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const handleCopy = () => {
     if (!message) return;
@@ -124,6 +130,11 @@ const MessageDetail = ({ message }: MessageDetailProps) => {
           <Tooltip title={copied ? "Copied!" : "Copy raw body"}>
             <IconButton size="small" onClick={handleCopy}>
               <ContentCopyIcon sx={{ fontSize: 16 }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Delete message">
+            <IconButton size="small" onClick={() => setConfirmDelete(true)} aria-label="Delete message">
+              <DeleteOutlineIcon sx={{ fontSize: 16 }} />
             </IconButton>
           </Tooltip>
         </Box>
@@ -231,6 +242,25 @@ const MessageDetail = ({ message }: MessageDetailProps) => {
             ))}
         </Box>
       </Box>
+
+      <Dialog open={confirmDelete} onClose={() => setConfirmDelete(false)} maxWidth="xs">
+        <DialogTitle>Delete message?</DialogTitle>
+        <DialogActions>
+          <Button variant="text" onClick={() => setConfirmDelete(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={() => {
+              setConfirmDelete(false);
+              onDelete?.(message);
+            }}
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

@@ -18,6 +18,7 @@ const mockMessages = [
   {
     messageBody: '{"orderId": 1}',
     messageId: "msg-001",
+    receiptHandle: "rcpt-001",
     messageAttributes: {
       SentTimestamp: "1700000000000",
       ApproximateFirstReceiveTimestamp: "1700000001000",
@@ -47,6 +48,8 @@ beforeEach(() => {
       case "PurgeQueue":
         return Response.json({});
       case "SendMessage":
+        return Response.json({});
+      case "DeleteMessage":
         return Response.json({});
       default:
         return Response.json({});
@@ -403,6 +406,90 @@ describe("<Overview /> spec", () => {
 
     await waitFor(() => {
       expect(screen.getByText("No messages in this queue")).toBeInTheDocument();
+    });
+  });
+
+  it("calls DeleteMessage API when delete is confirmed in the MessageDetail dialog", async () => {
+    await act(async () => {
+      render(<MemoryRouter><Overview /></MemoryRouter>);
+    });
+
+    // Wait for the message to appear and click it to select it
+    await waitFor(() => {
+      expect(screen.getByText(/msg-001/)).toBeInTheDocument();
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByText(/msg-001/));
+    });
+
+    // Click the delete button in the MessageDetail header
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Delete message" }));
+    });
+
+    // Confirm the dialog — click the Delete button inside DialogActions
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    });
+
+    expect(fetchHandler).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        body: expect.stringContaining('"DeleteMessage"'),
+      }),
+    );
+    expect(fetchHandler).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        body: expect.stringContaining('"receiptHandle":"rcpt-001"'),
+      }),
+    );
+  });
+
+  it("removes the deleted message from the visible list on DeleteMessage success", async () => {
+    // Override fetch so that after the initial GetMessages returns msg-001,
+    // subsequent GetMessages calls also return msg-001 (simulating the message
+    // is still there on the server until we delete it), and DeleteMessage returns {}.
+    let deleted = false;
+    global.fetch = jest.fn(async (_url: string, options?: RequestInit) => {
+      if (!options || options.method === "GET") {
+        return Response.json(mockQueues);
+      }
+      const body = JSON.parse(options.body as string);
+      switch (body.action) {
+        case "GetRegion":
+          return Response.json({ region: "us-east-1" });
+        case "GetMessages":
+          return Response.json(deleted ? [] : mockMessages);
+        case "DeleteMessage":
+          deleted = true;
+          return Response.json({});
+        default:
+          return Response.json({});
+      }
+    }) as typeof fetch;
+
+    await act(async () => {
+      render(<MemoryRouter><Overview /></MemoryRouter>);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/msg-001/)).toBeInTheDocument();
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByText(/msg-001/));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Delete message" }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    });
+
+    // After delete, msg-001 should be gone from the visible list immediately
+    // (removeMessage filters local state — does not wait for next poll)
+    await waitFor(() => {
+      expect(screen.queryByText(/msg-001/)).not.toBeInTheDocument();
     });
   });
 });

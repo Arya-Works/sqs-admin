@@ -35,6 +35,7 @@ export interface AwsRegion {
 export interface SqsMessage {
   messageBody: string;
   messageId?: string;
+  receiptHandle?: string;
   customAttributes?: Record<string, string>;
   messageAttributes?:
     | {
@@ -57,7 +58,8 @@ export interface ApiCall {
     | "PurgeQueue"
     | "GetMessages"
     | "SendMessage"
-    | "GetRegion";
+    | "GetRegion"
+    | "DeleteMessage";
   queue?: Queue;
   message?: any;
   onSuccess: any;

@@ -53,7 +53,7 @@ func receiveMessages(queueUrl *string) (*sqs.ReceiveMessageOutput, error) {
 		QueueUrl:              queueUrl,
 		AttributeNames:        []awsTypes.QueueAttributeName{awsTypes.QueueAttributeNameAll},
 		MessageAttributeNames: []string{"All"},
-		VisibilityTimeout:     1,
+		VisibilityTimeout:     30,
 		MaxNumberOfMessages:   10,
 		WaitTimeSeconds:       1,
 	})
@@ -73,11 +73,17 @@ func GetMessages(queueUrl string) ([]types.SqsMessage, error) {
 			}
 		}
 
+		if message.ReceiptHandle == nil {
+			log.Printf("Warning: message %v has nil ReceiptHandle, skipping", *message.MessageId)
+			continue
+		}
+
 		sqsMessages = append(sqsMessages, types.SqsMessage{
 			MessageId:         *message.MessageId,
 			MessageBody:       *message.Body,
 			MessageAttributes: message.Attributes,
 			CustomAttributes:  customAttrs,
+			ReceiptHandle:     *message.ReceiptHandle,
 		})
 	}
 	return sqsMessages, nil
@@ -92,6 +98,13 @@ func PurgeQueue(queueUrl string) (*sqs.PurgeQueueOutput, error) {
 func DeleteQueue(queueUrl string) (*sqs.DeleteQueueOutput, error) {
 	return sqsClient.DeleteQueue(context.TODO(), &sqs.DeleteQueueInput{
 		QueueUrl: &queueUrl,
+	})
+}
+
+func DeleteMessage(queueUrl string, receiptHandle string) (*sqs.DeleteMessageOutput, error) {
+	return sqsClient.DeleteMessage(context.TODO(), &sqs.DeleteMessageInput{
+		QueueUrl:      &queueUrl,
+		ReceiptHandle: &receiptHandle,
 	})
 }
 

@@ -11,6 +11,7 @@ type SqsMessage struct {
 	MessageBody       string            `json:"messageBody"`
 	MessageAttributes map[string]string `json:"messageAttributes"`
 	CustomAttributes  map[string]string `json:"customAttributes,omitempty"`
+	ReceiptHandle     string            `json:"receiptHandle"`
 }
 
 type Request struct {

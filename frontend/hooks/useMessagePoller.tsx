@@ -12,6 +12,7 @@ interface UseMessagePollerReturn {
   perQueuePaused: Record<string, boolean>;
   setPerQueuePaused: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   clearMessages: () => void;
+  removeMessage: (messageId: string) => void;
   clearError: () => void;
   error: string;
 }
@@ -73,6 +74,11 @@ const useMessagePoller = (selectedQueue: Queue | null): UseMessagePollerReturn =
     setLastUpdatedAt(null);
   };
 
+  /** Narrow removal — mirrors clearMessages per ISP. Pure filter, no side effects beyond state. */
+  const removeMessage = (messageId: string) => {
+    setMessages((prev) => prev.filter((m) => m.messageId !== messageId));
+  };
+
   const clearError = () => setError("");
 
   return {
@@ -84,6 +90,7 @@ const useMessagePoller = (selectedQueue: Queue | null): UseMessagePollerReturn =
     perQueuePaused,
     setPerQueuePaused,
     clearMessages,
+    removeMessage,
     clearError,
     error,
   };

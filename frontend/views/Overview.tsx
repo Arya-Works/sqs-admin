@@ -9,6 +9,7 @@ import AppShell from "./AppShell";
 import MessageInbox from "./MessageInbox";
 import MessageDetail from "./MessageDetail";
 import { SqsMessage } from "../types";
+import { callApi } from "../api/Http";
 
 /** Composition shell: wires hooks to the three-pane layout. No business logic. */
 const Overview = () => {
@@ -60,6 +61,37 @@ const Overview = () => {
       setSelectedMessage(null);
     }
   }, [poller.messages, selectedMessage]);
+
+  const handleDeleteMessage = (message: SqsMessage) => {
+    if (!selectedQueue) return;
+    // Compute remaining locally BEFORE dispatching state update — React state is async,
+    // and reading poller.messages after removeMessage would return stale data.
+    const currentIndex = poller.messages.findIndex(
+      (m) => m.messageId === message.messageId,
+    );
+    const remaining = poller.messages.filter(
+      (m) => m.messageId !== message.messageId,
+    );
+    callApi({
+      method: "POST",
+      action: "DeleteMessage",
+      queue: selectedQueue,
+      message: message,
+      onSuccess: () => {
+        poller.removeMessage(message.messageId!);
+        if (remaining.length === 0) {
+          setSelectedMessage(null);
+        } else {
+          const nextIndex = Math.min(currentIndex, remaining.length - 1);
+          setSelectedMessage(remaining[nextIndex]);
+        }
+      },
+      onError: (err: string) => {
+        // eslint-disable-next-line no-console
+        console.error("DeleteMessage failed:", err);
+      },
+    });
+  };
 
   useEffect(() => {
     if (queues.length > 0) {
@@ -119,7 +151,10 @@ const Overview = () => {
               selectedQueue={selectedQueue}
               onSelectMessage={setSelectedMessage}
             />
-            <MessageDetail message={selectedMessage} />
+            <MessageDetail
+              message={selectedMessage}
+              onDelete={handleDeleteMessage}
+            />
           </>
         ) : (
           // Full-width empty state — no split when nothing to show

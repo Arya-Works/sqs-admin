@@ -64,6 +64,13 @@ func SQSHandler() Handler {
 						Payload: messages,
 						Error:   err,
 					})
+				case "DeleteMessage":
+					log.Printf("Deleting message [%v] from queue [%v]", payload.SqsMessage.MessageId, payload.SqsQueue.QueueUrl)
+					_, err := aws.DeleteMessage(payload.SqsQueue.QueueUrl, payload.SqsMessage.ReceiptHandle)
+					checkForErrorAndRespondJSON(&writer, Response{
+						Payload: nil,
+						Error:   err,
+					})
 				case "GetRegion":
 					region := utils.GetEnv("SQS_AWS_REGION", "eu-central-1")
 					response := types.AwsRegion{Region: region}

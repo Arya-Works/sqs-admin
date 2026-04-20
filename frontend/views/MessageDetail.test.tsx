@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import MessageDetail from "./MessageDetail";
 
@@ -44,5 +44,42 @@ describe("<MessageDetail />", () => {
     };
     render(<MessageDetail message={message} />);
     expect(screen.getByText("Message Attributes")).toBeInTheDocument();
+  });
+
+  it("renders a delete button in the sticky header when a message is selected", () => {
+    const message = {
+      messageBody: "test body",
+      messageId: "msg-del-001",
+      receiptHandle: "rcpt-001",
+    };
+    render(<MessageDetail message={message} />);
+    expect(screen.getByRole("button", { name: "Delete message" })).toBeInTheDocument();
+  });
+
+  it("opens the confirmation dialog when the delete button is clicked", () => {
+    const message = {
+      messageBody: "test body",
+      messageId: "msg-del-002",
+      receiptHandle: "rcpt-002",
+    };
+    render(<MessageDetail message={message} />);
+    fireEvent.click(screen.getByRole("button", { name: "Delete message" }));
+    expect(screen.getByText("Delete message?")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+  });
+
+  it("calls onDelete with the current message when Delete is clicked in the dialog", () => {
+    const message = {
+      messageBody: "test body",
+      messageId: "msg-del-003",
+      receiptHandle: "rcpt-003",
+    };
+    const onDelete = jest.fn();
+    render(<MessageDetail message={message} onDelete={onDelete} />);
+    fireEvent.click(screen.getByRole("button", { name: "Delete message" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    expect(onDelete).toHaveBeenCalledTimes(1);
+    expect(onDelete).toHaveBeenCalledWith(message);
   });
 });
