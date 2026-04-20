@@ -46,9 +46,9 @@ describe("useMessagePoller", () => {
       },
     ).length;
 
-    // Advance 6 seconds (2 polling intervals)
+    // Advance 9 seconds (3 polling intervals)
     await act(async () => {
-      jest.advanceTimersByTime(6000);
+      jest.advanceTimersByTime(9000);
       await Promise.resolve();
     });
 
@@ -62,7 +62,44 @@ describe("useMessagePoller", () => {
       },
     ).length;
 
-    expect(callsAfter - callsBefore).toBeGreaterThanOrEqual(2);
+    expect(callsAfter - callsBefore).toBe(3);
+  });
+
+  it("fires poll callback exactly 3 times in 9 seconds (exact count)", async () => {
+    const { result } = renderHook(() => useMessagePoller(mockQueue));
+
+    // Drain mount-time useEffect poll
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const before = (global.fetch as jest.Mock).mock.calls.filter(
+      ([, opts]: [string, RequestInit?]) => {
+        try {
+          return JSON.parse(opts?.body as string).action === "GetMessages";
+        } catch {
+          return false;
+        }
+      },
+    ).length;
+
+    await act(async () => {
+      jest.advanceTimersByTime(9000);
+      await Promise.resolve();
+    });
+
+    const after = (global.fetch as jest.Mock).mock.calls.filter(
+      ([, opts]: [string, RequestInit?]) => {
+        try {
+          return JSON.parse(opts?.body as string).action === "GetMessages";
+        } catch {
+          return false;
+        }
+      },
+    ).length;
+
+    // Exactly 3 interval ticks in 9000ms at 3000ms interval
+    expect(after - before).toBe(3);
   });
 
   it("does NOT poll when pollingPaused is true", async () => {
@@ -141,6 +178,71 @@ describe("useMessagePoller", () => {
     ).length;
 
     expect(callsAfter).toBe(callsBefore);
+  });
+
+  it("fires poll exactly once on queue switch (useEffect one-shot)", async () => {
+    const { result, rerender } = renderHook(
+      ({ queue }: { queue: Queue | null }) => useMessagePoller(queue),
+      { initialProps: { queue: mockQueue } },
+    );
+
+    // Drain mount-time useEffect poll
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const newQueue: Queue = {
+      QueueName: "other-queue",
+      QueueUrl: "http://localhost:4566/000000000000/other-queue",
+    };
+
+    const callsBefore = (global.fetch as jest.Mock).mock.calls.filter(
+      ([, opts]: [string, RequestInit?]) => {
+        try {
+          return JSON.parse(opts?.body as string).action === "GetMessages";
+        } catch {
+          return false;
+        }
+      },
+    ).length;
+
+    // Switch queue — triggers useEffect
+    rerender({ queue: newQueue });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const callsAfterSwitch = (global.fetch as jest.Mock).mock.calls.filter(
+      ([, opts]: [string, RequestInit?]) => {
+        try {
+          return JSON.parse(opts?.body as string).action === "GetMessages";
+        } catch {
+          return false;
+        }
+      },
+    ).length;
+
+    // Exactly 1 call fired immediately on switch — the useEffect one-shot
+    expect(callsAfterSwitch - callsBefore).toBe(1);
+
+    // Advance 0ms more — no additional calls should fire
+    await act(async () => {
+      jest.advanceTimersByTime(0);
+      await Promise.resolve();
+    });
+
+    const callsAfterZero = (global.fetch as jest.Mock).mock.calls.filter(
+      ([, opts]: [string, RequestInit?]) => {
+        try {
+          return JSON.parse(opts?.body as string).action === "GetMessages";
+        } catch {
+          return false;
+        }
+      },
+    ).length;
+
+    expect(callsAfterZero).toBe(callsAfterSwitch);
   });
 
   it("clears messages and resets state when selectedQueue changes", async () => {

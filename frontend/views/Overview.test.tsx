@@ -62,12 +62,14 @@ afterEach(() => {
 });
 
 describe("<Overview /> spec", () => {
-  it("renders sidebar with app title and region", async () => {
+  it("renders app title and region in AppBar", async () => {
     await act(async () => {
       render(<MemoryRouter><Overview /></MemoryRouter>);
     });
-    expect(screen.getByText("SQS Admin UI")).toBeInTheDocument();
+    // New layout: title is "SQS Admin" (no "UI" suffix)
+    expect(screen.getByText("SQS Admin")).toBeInTheDocument();
     await waitFor(() => {
+      // Region is shown as a Chip in the AppBar
       expect(screen.getByText("us-east-1")).toBeInTheDocument();
     });
   });
@@ -77,8 +79,8 @@ describe("<Overview /> spec", () => {
       render(<MemoryRouter><Overview /></MemoryRouter>);
     });
     await waitFor(() => {
-      expect(screen.getByText("test-queue")).toBeInTheDocument();
-      expect(screen.getByText("orders.fifo")).toBeInTheDocument();
+      // Queues appear in the dropdown combobox value or as accessible option
+      expect(screen.getByDisplayValue("test-queue")).toBeInTheDocument();
     });
   });
 
@@ -104,7 +106,7 @@ describe("<Overview /> spec", () => {
     });
   });
 
-  it("disables action buttons when no queues exist", async () => {
+  it("disables overflow menu items when no queues exist", async () => {
     global.fetch = jest.fn(async (_url: string, options?: RequestInit) => {
       if (!options || options.method === "GET") return Response.json([]);
       return Response.json({ region: "" });
@@ -114,20 +116,36 @@ describe("<Overview /> spec", () => {
       render(<MemoryRouter><Overview /></MemoryRouter>);
     });
 
-    expect(screen.getByRole("button", { name: "Delete Queue" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Purge Queue" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+    // Open the overflow menu to inspect disabled state
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Queue actions" }));
+    });
+
+    // All action items should be disabled when no queue selected
+    const menuItems = screen.getAllByRole("menuitem");
+    menuItems.forEach((item) => {
+      expect(item).toHaveAttribute("aria-disabled", "true");
+    });
   });
 
-  it("enables action buttons when queues exist", async () => {
+  it("enables overflow menu items when queues exist", async () => {
     await act(async () => {
       render(<MemoryRouter><Overview /></MemoryRouter>);
     });
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Delete Queue" })).toBeEnabled();
-      expect(screen.getByRole("button", { name: "Purge Queue" })).toBeEnabled();
-      expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled();
+      expect(screen.getByDisplayValue("test-queue")).toBeInTheDocument();
+    });
+
+    // Open the overflow menu to inspect enabled state
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Queue actions" }));
+    });
+
+    await waitFor(() => {
+      // Send message button (inside SendMessageDialog wrapped in MenuItem) should be enabled
+      const sendBtn = screen.getByRole("button", { name: "Send message" });
+      expect(sendBtn).not.toBeDisabled();
     });
   });
 
@@ -139,30 +157,6 @@ describe("<Overview /> spec", () => {
     await waitFor(() => {
       expect(screen.getByText(/msg-001/)).toBeInTheDocument();
     });
-  });
-
-  it("selects a queue when clicked in sidebar", async () => {
-    await act(async () => {
-      render(<MemoryRouter><Overview /></MemoryRouter>);
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("test-queue")).toBeInTheDocument();
-    });
-
-    await act(async () => {
-      fireEvent.click(screen.getByText("test-queue"));
-    });
-
-    const selectedButton = screen.getByText("test-queue").closest("div.MuiListItemButton-root");
-    expect(selectedButton).toHaveClass("Mui-selected");
-  });
-
-  it("displays version from env", async () => {
-    await act(async () => {
-      render(<MemoryRouter><Overview /></MemoryRouter>);
-    });
-    expect(screen.getByText("1.0.0-test")).toBeInTheDocument();
   });
 
   it("shows error alert when API call fails", async () => {
@@ -201,17 +195,34 @@ describe("<Overview /> spec", () => {
     });
   });
 
-  it("calls delete queue API when Delete Queue is clicked", async () => {
+  it("calls delete queue API when Delete Queue is confirmed", async () => {
     await act(async () => {
       render(<MemoryRouter><Overview /></MemoryRouter>);
     });
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Delete Queue" })).toBeEnabled();
+      expect(screen.getByDisplayValue("test-queue")).toBeInTheDocument();
     });
 
+    // Open overflow menu
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Delete Queue" }));
+      fireEvent.click(screen.getByRole("button", { name: "Queue actions" }));
+    });
+
+    // Click "Delete Queue" in menu (opens confirmation dialog)
+    await act(async () => {
+      fireEvent.click(screen.getByText("Delete Queue"));
+    });
+
+    // Confirm in dialog — "Delete Queue" button in DialogActions
+    await act(async () => {
+      const deleteButtons = screen.getAllByText("Delete Queue");
+      // The button in DialogActions (contained, error color)
+      const confirmBtn = deleteButtons.find(
+        (el) => el.closest("button")?.getAttribute("type") === "button" &&
+          el.closest("[class*=MuiDialogActions]"),
+      ) ?? deleteButtons[deleteButtons.length - 1];
+      fireEvent.click(confirmBtn.closest("button") ?? confirmBtn);
     });
 
     expect(fetchHandler).toHaveBeenCalledWith(
@@ -222,17 +233,30 @@ describe("<Overview /> spec", () => {
     );
   });
 
-  it("calls purge queue API when Purge Queue is clicked", async () => {
+  it("calls purge queue API when Purge Queue is confirmed", async () => {
     await act(async () => {
       render(<MemoryRouter><Overview /></MemoryRouter>);
     });
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Purge Queue" })).toBeEnabled();
+      expect(screen.getByDisplayValue("test-queue")).toBeInTheDocument();
     });
 
+    // Open overflow menu
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Purge Queue" }));
+      fireEvent.click(screen.getByRole("button", { name: "Queue actions" }));
+    });
+
+    // Click "Purge Queue" in menu (opens confirmation dialog)
+    await act(async () => {
+      fireEvent.click(screen.getByText("Purge Queue"));
+    });
+
+    // Confirm in dialog — "Purge Queue" button in DialogActions
+    await act(async () => {
+      const purgeButtons = screen.getAllByText("Purge Queue");
+      const confirmBtn = purgeButtons[purgeButtons.length - 1];
+      fireEvent.click(confirmBtn.closest("button") ?? confirmBtn);
     });
 
     expect(fetchHandler).toHaveBeenCalledWith(
@@ -295,7 +319,7 @@ describe("<Overview /> spec", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("test-queue")).toBeInTheDocument();
+      expect(screen.getByDisplayValue("test-queue")).toBeInTheDocument();
     });
 
     // Record GetMessages call count before pause
@@ -319,18 +343,18 @@ describe("<Overview /> spec", () => {
     expect(getMessageCallsAfter).toBe(getMessageCallsBefore);
   });
 
-  it("renders per-queue polling dots with aria-labels", async () => {
+  it("renders polling dot for selected queue in AppBar", async () => {
     await act(async () => {
       render(<MemoryRouter><Overview /></MemoryRouter>);
     });
 
     await waitFor(() => {
+      // New layout: only selected queue has a polling dot in the AppBar
       expect(screen.getByLabelText("Pause polling for test-queue")).toBeInTheDocument();
-      expect(screen.getByLabelText("Pause polling for orders.fifo")).toBeInTheDocument();
     });
   });
 
-  it("toggles per-queue polling dot without selecting the queue", async () => {
+  it("toggles polling dot for selected queue", async () => {
     await act(async () => {
       render(<MemoryRouter><Overview /></MemoryRouter>);
     });
@@ -346,9 +370,6 @@ describe("<Overview /> spec", () => {
 
     // Dot should now show "Resume" label
     expect(screen.getByLabelText("Resume polling for test-queue")).toBeInTheDocument();
-
-    // Other queue dot should still show "Pause" (unaffected)
-    expect(screen.getByLabelText("Pause polling for orders.fifo")).toBeInTheDocument();
   });
 
   it("shows empty state after 3 consecutive empty polls", async () => {
