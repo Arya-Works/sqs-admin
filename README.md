@@ -14,84 +14,122 @@
   </a>
 </p>
 
-A minimal and lightweight UI for managing SQS-Queues for local development e.g. with [Localstack](https://localstack.cloud/).
+A minimal and lightweight UI for managing SQS queues for local development, e.g. with [Localstack](https://localstack.cloud/).
 
-![Sqs-Admin](screenshot.png)
+## What's New
 
-## Why
+This fork significantly redesigns the UI for multi-queue monitoring workflows.
 
-There are already good UIs for SQS, but they are heavy with sizes >100 MB. Most likely because they ship with SQS itself.
-If you choose e.g. Localstack for local development you don't need an additional local SQS setup, as it is already
-provided by Localstack, unfortunately without UI.
-**This image has a size ~8 MB**. You can easily manage and create Queues.
+**Multi-column layout**
+- Open up to N columns side-by-side (capped at `floor(viewport width / 320px)`)
+- Add columns with the `+` button in the toolbar; close any column with `×`
+- Column count and queue selections persist in the URL (`?c=2&q1=abc123&q2=def456`) — shareable and refresh-safe
+- Queue names are hashed (djb2, 6 base-36 chars) to keep URLs compact
+
+**Per-column message monitoring**
+- Messages display as expandable accordions within each column — no separate detail panel
+- Expand a message inline to see its full body (Tree or Raw view), custom attributes, metadata, and delete action
+- Tree/Raw toggle is per-column and always visible in the column header
+- Live message count badge uses `ApproximateNumberOfMessages` from queue attributes, falling back to the polled count
+
+**Independent polling per column**
+- Each column polls its queue every 3 seconds independently
+- Per-column pause/resume via the dot indicator in each column header
+- Global pause/resume all columns at once from the toolbar
+- Queue attributes refresh every 3s when messages are present, 10s when empty
+
+**New backend action**
+- `SetQueueAttributes` — set arbitrary SQS queue attributes via the API
+
+**Design**
+- Brutalist white/black aesthetic with indigo/violet accent palette
+- Content width capped at `max(columns × 480px, 1440px)` with smooth CSS transition as columns are added
+
+**Test coverage**
+- Frontend: 97%+ statement coverage, 161 tests
+- Go handler: 91%+ statement coverage, 18 tests
+
+---
 
 ## Usage
 
 ### Standalone Mode
 
-The most common way to use SQS-Admin would be in conjunction with a `docker-compose.yml`.
-A working example can be found in the `example` directory.
-
-You probably need to have a SQS up and running somewhere to connect to, e.g. via Localstack.
+The most common way to use SQS-Admin is in conjunction with a `docker-compose.yml`. A working example can be found in the `example` directory.
 
 > **Note:** As of March 2026, LocalStack requires an auth token. Sign up for a free account at [localstack.cloud](https://localstack.cloud/), then copy `.env.sample` to `.env` and fill in your token before running `docker compose up`.
 
-To start SQS-Admin simply run:
-`docker run --rm -p 3999:3999 -e SQS_ENDPOINT_URL=<Endpoint-URL-of-our-SQS> -d pacovk/sqs-admin`
+```bash
+docker run --rm -p 3999:3999 -e SQS_ENDPOINT_URL=<Endpoint-URL> -d pacovk/sqs-admin
+```
 
 ### LocalStack Extension
 
-SQS-Admin can also be used as a LocalStack extension, which provides a more integrated experience.
-
-More details [here](./localstack/README.md).
+SQS-Admin can also be used as a LocalStack extension. More details [here](./localstack/README.md).
 
 ## Compatibility
 
-SQS-Admin >= 0.5.4 does not support Localstack < 2.x. 
-If you need to stick to Localstack 1.x, please use SQS-Admin <= 0.5.3 ([see #928](https://github.com/PacoVK/sqs-admin/issues/928))
+SQS-Admin >= 0.5.4 does not support Localstack < 2.x.
+If you need to stick to Localstack 1.x, please use SQS-Admin <= 0.5.3 ([see #928](https://github.com/PacoVK/sqs-admin/issues/928)).
 
 ## Configuration
 
-You can easily configure the Docker Container via the following environment variables:
-
 | ENV              | Description                                                    | Default               |
 | ---------------- | -------------------------------------------------------------- | --------------------- |
-| SQS_ENDPOINT_URL | **Endpoint where SQS is running, this one is mostly required** | http://localhost:4566 |
-| SQS_AWS_REGION   | AWS region the client internally uses to interact with SQS     | eu-central-1          |
-
-## Contributing
-
-If you want to contribute to this project, please read the [contribution guidelines](./CONTRIBUTING.md).
+| SQS_ENDPOINT_URL | **Endpoint where SQS is running — required in most cases**     | http://localhost:4566 |
+| SQS_AWS_REGION   | AWS region the client uses internally                          | eu-central-1          |
 
 ## Development
 
+### Prerequisites
+
+This project uses Yarn 4 (Berry) via Corepack. Enable it once before running any `yarn` commands:
+
+```bash
+corepack enable
+```
+
 ### Run local environment
 
-To start your local development environment you can run `make dev`. This will start a local backend (default http://localhost:3999) and the UI (default http://localhost:3000).
+```bash
+make dev
+```
 
-The frontend is built with Vite for a faster and more efficient development experience.
+Starts the backend on `http://localhost:3999` and the frontend on `http://localhost:3000`.
 
-To configure the backend for local development you can set the following environment variable:
-
-| ENV       | Description                                            | Default |
-| --------- | ------------------------------------------------------ | ------- |
-| HTTP_PORT | Port that the internal backend binds to and is serving | 3999    |
+| ENV       | Description                               | Default |
+| --------- | ----------------------------------------- | ------- |
+| HTTP_PORT | Port the backend binds to and serves from | 3999    |
 
 ### Run tests
 
-To run the tests you can run `make test`. You'll need to shut down your local development environment afterward.
+**Frontend:**
+```bash
+yarn test                  # run once
+yarn test --watch          # watch mode
+yarn test --coverage       # with coverage report
+```
+
+**Go (from the server directory):**
+```bash
+cd server && go test ./...           # run all
+cd server && go test ./... -v        # verbose
+cd server && go test ./... -cover    # with coverage
+```
 
 ### Shutdown local environment
 
-To shutdown your local development environment you can run `make down`.
+```bash
+make down
+```
 
 ### Release
 
-To release a new version: 
-* Update `vite.config.ts` 
-* Update `package.json`
-* Update `./localstack/pyproject.toml`
-* Create a new release on GitHub
+To release a new version:
+- Update `vite.config.ts`
+- Update `package.json`
+- Update `./localstack/pyproject.toml`
+- Create a new release on GitHub
 
 ## Designed and tested with
 
@@ -117,10 +155,8 @@ Thanks go to these wonderful people ([emoji key](https://allcontributors.org/doc
     </tr>
   </tbody>
 </table>
-
 <!-- markdownlint-restore -->
 <!-- prettier-ignore-end -->
-
 <!-- ALL-CONTRIBUTORS-LIST:END -->
 
 #### Legal note

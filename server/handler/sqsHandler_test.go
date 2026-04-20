@@ -138,6 +138,26 @@ func TestReceiveEmptyMessages(t *testing.T) {
 	}
 }
 
+func TestSetQueueAttributes(t *testing.T) {
+	attributes := map[string]string{
+		"VisibilityTimeout": "60",
+	}
+	var s, _ = json.Marshal(types.Request{
+		Action: "SetQueueAttributes",
+		SqsQueue: types.SqsQueue{
+			QueueUrl:        testingQueueUrl,
+			QueueName:       testingQueueName,
+			QueueAttributes: &attributes,
+		},
+	})
+	req, _ := http.NewRequest("POST", "/sqs", bytes.NewBuffer(s))
+	response := executeRequest(req, router)
+	checkResponseCode(t, http.StatusOK, response.Code)
+	if response.Body.String() != "null" {
+		t.Error("Did not get expected response body, got", response.Body.String())
+	}
+}
+
 func TestDeleteSqsQueues(t *testing.T) {
 	var s, _ = json.Marshal(types.Request{
 		Action: "DeleteQueue",
@@ -172,6 +192,121 @@ func TestListEmptySqsQueues(t *testing.T) {
 	checkResponseCode(t, http.StatusOK, response.Code)
 	if response.Body.String() != "[]" {
 		t.Error("Did not get expected response body, got", response.Body.String())
+	}
+}
+
+// badQueueUrl references a queue that does not exist in LocalStack.
+// All action handlers that call AWS and receive an error must return HTTP 400.
+const badQueueUrl = "http://localhost:4566/000000000000/does-not-exist-for-error-tests"
+
+func TestCreateQueueError(t *testing.T) {
+	// Queue names with spaces/special chars are rejected by SQS — triggers error path.
+	attrs := make(map[string]string)
+	var s, _ = json.Marshal(types.Request{
+		Action: "CreateQueue",
+		SqsQueue: types.SqsQueue{
+			QueueName:       "invalid queue name!!!",
+			QueueAttributes: &attrs,
+		},
+	})
+	req, _ := http.NewRequest("POST", "/sqs", bytes.NewBuffer(s))
+	response := executeRequest(req, router)
+	checkResponseCode(t, http.StatusBadRequest, response.Code)
+}
+
+func TestDeleteQueueError(t *testing.T) {
+	var s, _ = json.Marshal(types.Request{
+		Action: "DeleteQueue",
+		SqsQueue: types.SqsQueue{
+			QueueUrl:  badQueueUrl,
+			QueueName: "does-not-exist-for-error-tests",
+		},
+	})
+	req, _ := http.NewRequest("POST", "/sqs", bytes.NewBuffer(s))
+	response := executeRequest(req, router)
+	checkResponseCode(t, http.StatusBadRequest, response.Code)
+}
+
+func TestPurgeQueueError(t *testing.T) {
+	var s, _ = json.Marshal(types.Request{
+		Action: "PurgeQueue",
+		SqsQueue: types.SqsQueue{
+			QueueUrl:  badQueueUrl,
+			QueueName: "does-not-exist-for-error-tests",
+		},
+	})
+	req, _ := http.NewRequest("POST", "/sqs", bytes.NewBuffer(s))
+	response := executeRequest(req, router)
+	checkResponseCode(t, http.StatusBadRequest, response.Code)
+}
+
+func TestSendMessageError(t *testing.T) {
+	var s, _ = json.Marshal(types.Request{
+		Action: "SendMessage",
+		SqsQueue: types.SqsQueue{
+			QueueUrl:  badQueueUrl,
+			QueueName: "does-not-exist-for-error-tests",
+		},
+		SqsMessage: types.SqsMessage{
+			MessageBody: "will fail",
+		},
+	})
+	req, _ := http.NewRequest("POST", "/sqs", bytes.NewBuffer(s))
+	response := executeRequest(req, router)
+	checkResponseCode(t, http.StatusBadRequest, response.Code)
+}
+
+func TestGetMessagesError(t *testing.T) {
+	var s, _ = json.Marshal(types.Request{
+		Action: "GetMessages",
+		SqsQueue: types.SqsQueue{
+			QueueUrl: badQueueUrl,
+		},
+	})
+	req, _ := http.NewRequest("POST", "/sqs", bytes.NewBuffer(s))
+	response := executeRequest(req, router)
+	checkResponseCode(t, http.StatusBadRequest, response.Code)
+}
+
+func TestDeleteMessageError(t *testing.T) {
+	var s, _ = json.Marshal(types.Request{
+		Action: "DeleteMessage",
+		SqsQueue: types.SqsQueue{
+			QueueUrl: badQueueUrl,
+		},
+		SqsMessage: types.SqsMessage{
+			ReceiptHandle: "fake-receipt-handle",
+		},
+	})
+	req, _ := http.NewRequest("POST", "/sqs", bytes.NewBuffer(s))
+	response := executeRequest(req, router)
+	checkResponseCode(t, http.StatusBadRequest, response.Code)
+}
+
+func TestSetQueueAttributesError(t *testing.T) {
+	attrs := map[string]string{"VisibilityTimeout": "60"}
+	var s, _ = json.Marshal(types.Request{
+		Action: "SetQueueAttributes",
+		SqsQueue: types.SqsQueue{
+			QueueUrl:        badQueueUrl,
+			QueueName:       "does-not-exist-for-error-tests",
+			QueueAttributes: &attrs,
+		},
+	})
+	req, _ := http.NewRequest("POST", "/sqs", bytes.NewBuffer(s))
+	response := executeRequest(req, router)
+	checkResponseCode(t, http.StatusBadRequest, response.Code)
+}
+
+func TestUnsupportedAction(t *testing.T) {
+	var s, _ = json.Marshal(types.Request{
+		Action: "ClearlyNotAnAction",
+	})
+	req, _ := http.NewRequest("POST", "/sqs", bytes.NewBuffer(s))
+	response := executeRequest(req, router)
+	checkResponseCode(t, http.StatusBadRequest, response.Code)
+	if !strings.Contains(response.Body.String(), "ClearlyNotAnAction") {
+		t.Errorf("Expected body to mention unsupported action, got: %s", response.Body.String())
 	}
 }
 

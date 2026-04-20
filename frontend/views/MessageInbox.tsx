@@ -7,6 +7,7 @@ import {
   Typography,
 } from "@mui/material";
 import { SqsMessage, Queue } from "../types";
+import { ACCENT } from "../theme";
 import { formatRelativeTime } from "../utils/time";
 
 interface MessageInboxProps {
@@ -73,8 +74,7 @@ const MessageInbox = ({
         width: "38%",
         flexShrink: 0,
         overflowY: "auto",
-        borderRight: 1,
-        borderColor: "divider",
+        borderRight: "2px solid #0A0A0A",
       }}
     >
       <List disablePadding>
@@ -93,7 +93,11 @@ const MessageInbox = ({
                 px: 2,
                 minHeight: 56,
                 "&.Mui-selected": {
-                  bgcolor: "rgba(103,80,164,0.08)",
+                  bgcolor: `${ACCENT}0F`,
+                  boxShadow: `inset 3px 0 0 ${ACCENT}`,
+                },
+                "&.Mui-selected:hover": {
+                  bgcolor: `${ACCENT}1A`,
                 },
               }}
             >

@@ -108,6 +108,14 @@ func DeleteMessage(queueUrl string, receiptHandle string) (*sqs.DeleteMessageOut
 	})
 }
 
+func SetQueueAttributes(queueUrl string, attributes map[string]string) error {
+	_, err := sqsClient.SetQueueAttributes(context.TODO(), &sqs.SetQueueAttributesInput{
+		QueueUrl:   &queueUrl,
+		Attributes: attributes,
+	})
+	return err
+}
+
 func CreateQueue(queueName string, attributes *map[string]string) (*sqs.CreateQueueOutput, error) {
 	return sqsClient.CreateQueue(context.TODO(), &sqs.CreateQueueInput{
 		QueueName:  &queueName,

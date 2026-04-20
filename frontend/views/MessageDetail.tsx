@@ -19,27 +19,28 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { JSONTree } from "react-json-tree";
 import { SqsMessage } from "../types";
+import { ACCENT } from "../theme";
 import { toLocaleString, getJsonOrRawData } from "../utils/time";
 
 // Light base16 theme that works on a white/grey MUI background
 const LIGHT_THEME = {
   scheme: "light",
-  base00: "#fafafa", // background — matches MUI default
-  base01: "#f0f0f0",
-  base02: "#e0e0e0",
-  base03: "#9e9e9e",
+  base00: "#FAFAFA",
+  base01: "#F0F0F0",
+  base02: "#E0E0E0",
+  base03: "#9E9E9E",
   base04: "#757575",
-  base05: "#212121", // default text
+  base05: "#0A0A0A",
   base06: "#212121",
   base07: "#000000",
-  base08: "#c62828", // null / error — red
-  base09: "#e65100", // numbers — orange
-  base0A: "#f57f17", // integers — amber
-  base0B: "#2e7d32", // strings — green
-  base0C: "#00838f", // regex — cyan
-  base0D: "#1565c0", // object keys — blue
-  base0E: "#6a1b9a", // booleans — purple
-  base0F: "#4e342e", // undefined — brown
+  base08: "#DC2626", // null / error — red
+  base09: "#EA580C", // numbers — orange
+  base0A: "#D97706", // integers — amber
+  base0B: "#16A34A", // strings — green
+  base0C: "#0891B2", // regex — cyan
+  base0D: ACCENT, // object keys — matches accent
+  base0E: "#0369A1", // booleans — dark cyan
+  base0F: "#78350F", // undefined — brown
 };
 
 interface MessageDetailProps {
@@ -145,7 +146,7 @@ const MessageDetail = ({ message, onDelete }: MessageDetailProps) => {
               bgcolor: "#fafafa",
               border: "1px solid",
               borderColor: "divider",
-              borderRadius: 1,
+              borderRadius: 0,
               px: 1,
               py: 0.5,
               overflowX: "auto",
@@ -166,7 +167,7 @@ const MessageDetail = ({ message, onDelete }: MessageDetailProps) => {
               bgcolor: "#fafafa",
               border: "1px solid",
               borderColor: "divider",
-              borderRadius: 1,
+              borderRadius: 0,
               px: 2,
               py: 1.5,
               fontFamily: "monospace",
@@ -190,7 +191,7 @@ const MessageDetail = ({ message, onDelete }: MessageDetailProps) => {
             expanded={attrExpanded}
             onChange={() => setAttrExpanded((prev) => !prev)}
             elevation={0}
-            sx={{ border: "1px solid", borderColor: "divider", borderRadius: "4px !important" }}
+            sx={{ border: "1px solid", borderColor: "divider" }}
           >
             <AccordionSummary expandIcon={<ExpandMoreIcon />}>
               <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>

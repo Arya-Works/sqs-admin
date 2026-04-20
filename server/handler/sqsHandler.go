@@ -51,6 +51,13 @@ func SQSHandler() Handler {
 						Payload: nil,
 						Error:   err,
 					})
+				case "SetQueueAttributes":
+					log.Printf("Setting attributes for queue [%v]", payload.SqsQueue.QueueName)
+					err := aws.SetQueueAttributes(payload.SqsQueue.QueueUrl, *payload.SqsQueue.QueueAttributes)
+					checkForErrorAndRespondJSON(&writer, Response{
+						Payload: nil,
+						Error:   err,
+					})
 				case "PurgeQueue":
 					log.Printf("Purging queue [%v]", payload.SqsQueue.QueueName)
 					_, err := aws.PurgeQueue(payload.SqsQueue.QueueUrl)

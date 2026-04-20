@@ -19,7 +19,7 @@ interface UseMessagePollerReturn {
 
 /** Polls SQS for messages every 3 seconds. Implements stale-while-revalidate: holds stale
  *  messages until 3 consecutive empty responses, then clears. */
-const useMessagePoller = (selectedQueue: Queue | null): UseMessagePollerReturn => {
+const useMessagePoller = (selectedQueue: Queue | null, externalPaused = false): UseMessagePollerReturn => {
   const [messages, setMessages] = useState<SqsMessage[]>([]);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const consecutiveEmptyCount = useRef(0);
@@ -52,7 +52,7 @@ const useMessagePoller = (selectedQueue: Queue | null): UseMessagePollerReturn =
   };
 
   useInterval(async () => {
-    if (!pollingPaused && !perQueuePaused[selectedQueue?.QueueName ?? ""]) {
+    if (!pollingPaused && !perQueuePaused[selectedQueue?.QueueName ?? ""] && !externalPaused) {
       await pollMessages();
     }
   }, 3000);

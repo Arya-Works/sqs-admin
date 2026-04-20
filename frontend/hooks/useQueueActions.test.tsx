@@ -120,6 +120,23 @@ describe("useQueueActions", () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
+  it("sendMessageToCurrentQueue sets error when selectedQueue has no QueueUrl", async () => {
+    // Pass null as the selected queue so QueueUrl is absent — covers lines 60-61
+    const { result } = renderHook(() =>
+      useQueueActions(null, mockReloadQueues, mockClearMessages),
+    );
+
+    const message: SqsMessage = { messageBody: "hello" };
+    await act(async () => {
+      await result.current.sendMessageToCurrentQueue(message);
+    });
+
+    expect(result.current.error).toBe(
+      "Could not send message to non-existent queue",
+    );
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
   it("has no setTimeout calls in mutation handlers", () => {
     // This is a static check — the source file must contain 0 setTimeout occurrences.
     // Enforced by acceptance criteria grep; this test documents the requirement.

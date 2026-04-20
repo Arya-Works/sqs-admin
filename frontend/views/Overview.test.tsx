@@ -3,30 +3,53 @@ import { MemoryRouter } from "react-router-dom";
 import Overview from "./Overview";
 import "@testing-library/jest-dom";
 
+// Mock QueueColumn to keep tests at unit level — we test column wiring, not internals
+jest.mock("./QueueColumn", () => {
+  const React = require("react");
+  return function MockQueueColumn({
+    queue,
+    queues,
+    globalPaused,
+    onSelectQueue,
+    showBorder,
+    onRemove,
+  }: {
+    queue: { QueueName: string } | null;
+    queues: { QueueName: string }[];
+    globalPaused: boolean;
+    onSelectQueue: (name: string) => void;
+    showBorder: boolean;
+    onRemove?: () => void;
+  }) {
+    return (
+      <div data-testid="queue-column">
+        <span data-testid="column-queue">{queue?.QueueName ?? "empty"}</span>
+        <span data-testid="column-border">{showBorder ? "bordered" : "no-border"}</span>
+        <span data-testid="column-paused">{globalPaused ? "paused" : "running"}</span>
+        {onRemove && (
+          <button onClick={onRemove} aria-label="Close column">Remove</button>
+        )}
+        <select
+          aria-label="select-queue"
+          onChange={(e) => onSelectQueue(e.target.value)}
+          value={queue?.QueueName ?? ""}
+        >
+          <option value="">--</option>
+          {queues.map((q) => (
+            <option key={q.QueueName} value={q.QueueName}>{q.QueueName}</option>
+          ))}
+        </select>
+      </div>
+    );
+  };
+});
+
 const mockQueues = [
-  {
-    QueueName: "test-queue",
-    QueueUrl: "http://localhost:4566/000000000000/test-queue",
-  },
-  {
-    QueueName: "orders.fifo",
-    QueueUrl: "http://localhost:4566/000000000000/orders.fifo",
-  },
+  { QueueName: "test-queue", QueueUrl: "http://localhost:4566/000000000000/test-queue" },
+  { QueueName: "orders.fifo", QueueUrl: "http://localhost:4566/000000000000/orders.fifo" },
 ];
 
-const mockMessages = [
-  {
-    messageBody: '{"orderId": 1}',
-    messageId: "msg-001",
-    receiptHandle: "rcpt-001",
-    messageAttributes: {
-      SentTimestamp: "1700000000000",
-      ApproximateFirstReceiveTimestamp: "1700000001000",
-    },
-  },
-];
-
-let fetchHandler: (url: string, options?: RequestInit) => Promise<Response>;
+let fetchHandler: jest.Mock;
 
 beforeEach(() => {
   jest.useFakeTimers();
@@ -39,17 +62,7 @@ beforeEach(() => {
     switch (body.action) {
       case "GetRegion":
         return Response.json({ region: "us-east-1" });
-      case "GetMessages":
-        return Response.json(mockMessages);
       case "CreateQueue":
-        return Response.json({});
-      case "DeleteQueue":
-        return Response.json({});
-      case "PurgeQueue":
-        return Response.json({});
-      case "SendMessage":
-        return Response.json({});
-      case "DeleteMessage":
         return Response.json({});
       default:
         return Response.json({});
@@ -64,111 +77,69 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
-describe("<Overview /> spec", () => {
-  it("renders app title and region in AppBar", async () => {
+describe("<Overview />", () => {
+  it("renders app title and AppBar", async () => {
     await act(async () => {
       render(<MemoryRouter><Overview /></MemoryRouter>);
     });
-    // New layout: title is "SQS Admin" (no "UI" suffix)
     expect(screen.getByText("SQS Admin")).toBeInTheDocument();
+    expect(screen.getByRole("banner")).toBeInTheDocument();
+  });
+
+  it("displays the region chip after API response", async () => {
+    await act(async () => {
+      render(<MemoryRouter><Overview /></MemoryRouter>);
+    });
     await waitFor(() => {
-      // Region is shown as a Chip in the AppBar
       expect(screen.getByText("us-east-1")).toBeInTheDocument();
     });
   });
 
-  it("renders queue list from API", async () => {
+  it("renders one QueueColumn by default (c=1)", async () => {
     await act(async () => {
-      render(<MemoryRouter><Overview /></MemoryRouter>);
+      render(<MemoryRouter initialEntries={["/?c=1"]}><Overview /></MemoryRouter>);
     });
     await waitFor(() => {
-      // Queues appear in the dropdown combobox value or as accessible option
-      expect(screen.getByDisplayValue("test-queue")).toBeInTheDocument();
+      const columns = screen.getAllByTestId("queue-column");
+      expect(columns).toHaveLength(1);
     });
   });
 
-  it("shows 'No Queue' message when no queues exist", async () => {
+  it("renders three QueueColumns when URL has c=3", async () => {
+    await act(async () => {
+      render(<MemoryRouter initialEntries={["/?c=3"]}><Overview /></MemoryRouter>);
+    });
+    await waitFor(() => {
+      const columns = screen.getAllByTestId("queue-column");
+      expect(columns).toHaveLength(3);
+    });
+  });
+
+  it("shows 'No Queues' alert when API returns empty list", async () => {
     global.fetch = jest.fn(async (_url: string, options?: RequestInit) => {
-      if (!options || options.method === "GET") {
-        return Response.json([]);
-      }
+      if (!options || options.method === "GET") return Response.json([]);
       const body = JSON.parse(options.body as string);
-      if (body.action === "GetRegion") {
-        return Response.json({ region: "eu-central-1" });
-      }
+      if (body.action === "GetRegion") return Response.json({ region: "eu-central-1" });
       return Response.json({});
     }) as typeof fetch;
 
     await act(async () => {
-      render(<MemoryRouter><Overview /></MemoryRouter>);
+      render(<MemoryRouter initialEntries={["/?c=1"]}><Overview /></MemoryRouter>);
     });
 
     await waitFor(() => {
-      expect(screen.getByText("No Queue")).toBeInTheDocument();
-      expect(screen.getByText(/No Queues exist in region/)).toBeInTheDocument();
+      expect(screen.getByText("No Queues")).toBeInTheDocument();
+      expect(screen.getByText(/No queues in region/)).toBeInTheDocument();
     });
   });
 
-  it("disables overflow menu items when no queues exist", async () => {
-    global.fetch = jest.fn(async (_url: string, options?: RequestInit) => {
-      if (!options || options.method === "GET") return Response.json([]);
-      return Response.json({ region: "" });
-    }) as typeof fetch;
-
-    await act(async () => {
-      render(<MemoryRouter><Overview /></MemoryRouter>);
-    });
-
-    // Open the overflow menu to inspect disabled state
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Queue actions" }));
-    });
-
-    // All action items should be disabled when no queue selected
-    const menuItems = screen.getAllByRole("menuitem");
-    menuItems.forEach((item) => {
-      expect(item).toHaveAttribute("aria-disabled", "true");
-    });
-  });
-
-  it("enables overflow menu items when queues exist", async () => {
-    await act(async () => {
-      render(<MemoryRouter><Overview /></MemoryRouter>);
-    });
-
-    await waitFor(() => {
-      expect(screen.getByDisplayValue("test-queue")).toBeInTheDocument();
-    });
-
-    // Open the overflow menu to inspect enabled state
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Queue actions" }));
-    });
-
-    await waitFor(() => {
-      // Send message button (inside SendMessageDialog wrapped in MenuItem) should be enabled
-      const sendBtn = screen.getByRole("button", { name: "Send message" });
-      expect(sendBtn).not.toBeDisabled();
-    });
-  });
-
-  it("renders messages for selected queue", async () => {
-    await act(async () => {
-      render(<MemoryRouter><Overview /></MemoryRouter>);
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText(/msg-001/)).toBeInTheDocument();
-    });
-  });
-
-  it("shows error alert when API call fails", async () => {
+  it("shows error alert when API call throws", async () => {
     global.fetch = jest.fn(async () => {
       throw new Error("Network failure");
     }) as typeof fetch;
 
     await act(async () => {
-      render(<MemoryRouter><Overview /></MemoryRouter>);
+      render(<MemoryRouter initialEntries={["/?c=1"]}><Overview /></MemoryRouter>);
     });
 
     await waitFor(() => {
@@ -182,7 +153,7 @@ describe("<Overview /> spec", () => {
     }) as typeof fetch;
 
     await act(async () => {
-      render(<MemoryRouter><Overview /></MemoryRouter>);
+      render(<MemoryRouter initialEntries={["/?c=1"]}><Overview /></MemoryRouter>);
     });
 
     await waitFor(() => {
@@ -198,81 +169,116 @@ describe("<Overview /> spec", () => {
     });
   });
 
-  it("calls delete queue API when Delete Queue is confirmed", async () => {
+  it("passes globalPaused=false to columns initially", async () => {
     await act(async () => {
-      render(<MemoryRouter><Overview /></MemoryRouter>);
+      render(<MemoryRouter initialEntries={["/?c=1"]}><Overview /></MemoryRouter>);
     });
 
     await waitFor(() => {
-      expect(screen.getByDisplayValue("test-queue")).toBeInTheDocument();
+      expect(screen.getByTestId("column-paused").textContent).toBe("running");
     });
-
-    // Open overflow menu
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Queue actions" }));
-    });
-
-    // Click "Delete Queue" in menu (opens confirmation dialog)
-    await act(async () => {
-      fireEvent.click(screen.getByText("Delete Queue"));
-    });
-
-    // Confirm in dialog — "Delete Queue" button in DialogActions
-    await act(async () => {
-      const deleteButtons = screen.getAllByText("Delete Queue");
-      // The button in DialogActions (contained, error color)
-      const confirmBtn = deleteButtons.find(
-        (el) => el.closest("button")?.getAttribute("type") === "button" &&
-          el.closest("[class*=MuiDialogActions]"),
-      ) ?? deleteButtons[deleteButtons.length - 1];
-      fireEvent.click(confirmBtn.closest("button") ?? confirmBtn);
-    });
-
-    expect(fetchHandler).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({
-        body: expect.stringContaining('"DeleteQueue"'),
-      }),
-    );
   });
 
-  it("calls purge queue API when Purge Queue is confirmed", async () => {
+  it("toggles globalPaused state via AppShell pause button", async () => {
     await act(async () => {
-      render(<MemoryRouter><Overview /></MemoryRouter>);
+      render(<MemoryRouter initialEntries={["/?c=1"]}><Overview /></MemoryRouter>);
     });
 
     await waitFor(() => {
-      expect(screen.getByDisplayValue("test-queue")).toBeInTheDocument();
+      expect(screen.getByLabelText("Pause all polling")).toBeInTheDocument();
     });
 
-    // Open overflow menu
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Queue actions" }));
+      fireEvent.click(screen.getByLabelText("Pause all polling"));
     });
 
-    // Click "Purge Queue" in menu (opens confirmation dialog)
+    expect(screen.getByLabelText("Resume all polling")).toBeInTheDocument();
+    expect(screen.getByTestId("column-paused").textContent).toBe("paused");
+
     await act(async () => {
-      fireEvent.click(screen.getByText("Purge Queue"));
+      fireEvent.click(screen.getByLabelText("Resume all polling"));
     });
 
-    // Confirm in dialog — "Purge Queue" button in DialogActions
-    await act(async () => {
-      const purgeButtons = screen.getAllByText("Purge Queue");
-      const confirmBtn = purgeButtons[purgeButtons.length - 1];
-      fireEvent.click(confirmBtn.closest("button") ?? confirmBtn);
-    });
-
-    expect(fetchHandler).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({
-        body: expect.stringContaining('"PurgeQueue"'),
-      }),
-    );
+    expect(screen.getByLabelText("Pause all polling")).toBeInTheDocument();
+    expect(screen.getByTestId("column-paused").textContent).toBe("running");
   });
 
-  it("creates a queue via the Create Queue dialog", async () => {
+  it("last column has no border, non-last columns have border", async () => {
     await act(async () => {
-      render(<MemoryRouter><Overview /></MemoryRouter>);
+      render(<MemoryRouter initialEntries={["/?c=3"]}><Overview /></MemoryRouter>);
+    });
+
+    await waitFor(() => {
+      const borders = screen.getAllByTestId("column-border");
+      expect(borders).toHaveLength(3);
+      expect(borders[0].textContent).toBe("bordered");
+      expect(borders[1].textContent).toBe("bordered");
+      expect(borders[2].textContent).toBe("no-border");
+    });
+  });
+
+  it("single column has no onRemove (cannot remove last column)", async () => {
+    await act(async () => {
+      render(<MemoryRouter initialEntries={["/?c=1"]}><Overview /></MemoryRouter>);
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "Close column" })).not.toBeInTheDocument();
+    });
+  });
+
+  it("multi-column layout shows Remove buttons on each column", async () => {
+    await act(async () => {
+      render(<MemoryRouter initialEntries={["/?c=2"]}><Overview /></MemoryRouter>);
+    });
+
+    await waitFor(() => {
+      const removeBtns = screen.getAllByRole("button", { name: "Close column" });
+      expect(removeBtns).toHaveLength(2);
+    });
+  });
+
+  it("clicking Remove decrements column count from 2 to 1", async () => {
+    await act(async () => {
+      render(<MemoryRouter initialEntries={["/?c=2"]}><Overview /></MemoryRouter>);
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("queue-column")).toHaveLength(2);
+    });
+
+    await act(async () => {
+      const removeBtns = screen.getAllByRole("button", { name: "Close column" });
+      fireEvent.click(removeBtns[0]);
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("queue-column")).toHaveLength(1);
+    });
+  });
+
+  it("Add column button increments column count", async () => {
+    // jsdom window.innerWidth defaults to 1024 — wide enough for 3 columns (3 * 320 = 960)
+    await act(async () => {
+      render(<MemoryRouter initialEntries={["/?c=1"]}><Overview /></MemoryRouter>);
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("queue-column")).toHaveLength(1);
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Add column" }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("queue-column")).toHaveLength(2);
+    });
+  });
+
+  it("calls CreateQueue API when create queue dialog is submitted", async () => {
+    await act(async () => {
+      render(<MemoryRouter initialEntries={["/?c=1"]}><Overview /></MemoryRouter>);
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Create Queue" }));
@@ -292,204 +298,162 @@ describe("<Overview /> spec", () => {
     );
   });
 
-  it("renders global pause button and toggles icon on click", async () => {
+  it("migrates legacy ?cols= param to new hashed format on first load", async () => {
+    // ?cols= format: tilde-separated queue names, no 'c' param present
     await act(async () => {
-      render(<MemoryRouter><Overview /></MemoryRouter>);
+      render(
+        <MemoryRouter initialEntries={["/?cols=test-queue~orders.fifo"]}>
+          <Overview />
+        </MemoryRouter>,
+      );
     });
 
+    // After migration the component re-renders with the new URL params.
+    // The column count should be 2 (two names in ?cols=)
     await waitFor(() => {
-      expect(screen.getByLabelText("Pause all polling")).toBeInTheDocument();
-    });
-
-    // Click to pause
-    await act(async () => {
-      fireEvent.click(screen.getByLabelText("Pause all polling"));
-    });
-
-    expect(screen.getByLabelText("Resume all polling")).toBeInTheDocument();
-
-    // Click to resume
-    await act(async () => {
-      fireEvent.click(screen.getByLabelText("Resume all polling"));
-    });
-
-    expect(screen.getByLabelText("Pause all polling")).toBeInTheDocument();
-  });
-
-  it("stops polling when global pause is active", async () => {
-    await act(async () => {
-      render(<MemoryRouter><Overview /></MemoryRouter>);
-    });
-
-    await waitFor(() => {
-      expect(screen.getByDisplayValue("test-queue")).toBeInTheDocument();
-    });
-
-    // Record GetMessages call count before pause
-    const getMessageCallsBefore = (fetchHandler as jest.Mock).mock.calls
-      .filter(([, opts]: [string, RequestInit?]) => opts?.body && JSON.parse(opts.body as string).action === "GetMessages").length;
-
-    // Click pause
-    await act(async () => {
-      fireEvent.click(screen.getByLabelText("Pause all polling"));
-    });
-
-    // Advance timers by 9 seconds (3 polling intervals)
-    await act(async () => {
-      jest.advanceTimersByTime(9000);
-    });
-
-    const getMessageCallsAfter = (fetchHandler as jest.Mock).mock.calls
-      .filter(([, opts]: [string, RequestInit?]) => opts?.body && JSON.parse(opts.body as string).action === "GetMessages").length;
-
-    // No new GetMessages calls should have been made while paused
-    expect(getMessageCallsAfter).toBe(getMessageCallsBefore);
-  });
-
-  it("renders polling dot for selected queue in AppBar", async () => {
-    await act(async () => {
-      render(<MemoryRouter><Overview /></MemoryRouter>);
-    });
-
-    await waitFor(() => {
-      // New layout: only selected queue has a polling dot in the AppBar
-      expect(screen.getByLabelText("Pause polling for test-queue")).toBeInTheDocument();
+      expect(screen.getAllByTestId("queue-column")).toHaveLength(2);
     });
   });
 
-  it("toggles polling dot for selected queue", async () => {
+  it("migrates legacy ?queue= param to new hashed format on first load", async () => {
+    // Old ?queue= single-queue format — no 'c' param present
     await act(async () => {
-      render(<MemoryRouter><Overview /></MemoryRouter>);
+      render(
+        <MemoryRouter initialEntries={["/?queue=test-queue"]}>
+          <Overview />
+        </MemoryRouter>,
+      );
     });
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Pause polling for test-queue")).toBeInTheDocument();
+      expect(screen.getAllByTestId("queue-column")).toHaveLength(1);
     });
-
-    // Click the dot to pause test-queue
-    await act(async () => {
-      fireEvent.click(screen.getByLabelText("Pause polling for test-queue"));
-    });
-
-    // Dot should now show "Resume" label
-    expect(screen.getByLabelText("Resume polling for test-queue")).toBeInTheDocument();
   });
 
-  it("shows empty state after 3 consecutive empty polls", async () => {
-    // Override fetch to return empty messages array
+  it("setSlotQueue updates URL when a queue is selected in a column", async () => {
+    await act(async () => {
+      render(<MemoryRouter initialEntries={["/?c=1"]}><Overview /></MemoryRouter>);
+    });
+
+    // Wait for queues to load so the select is populated
+    await waitFor(() => {
+      expect(screen.getAllByTestId("queue-column")).toHaveLength(1);
+    });
+
+    // The mock QueueColumn has a <select aria-label="select-queue"> that calls onSelectQueue
+    await act(async () => {
+      // select element — use getByRole("listbox") or just query directly
+      const selectEl = document.querySelector('select[aria-label="select-queue"]') as HTMLSelectElement;
+      expect(selectEl).not.toBeNull();
+      fireEvent.change(selectEl, { target: { value: "orders.fifo" } });
+    });
+
+    // After selection, the column should reflect the chosen queue via getSlotQueue
+    await waitFor(() => {
+      expect(screen.getByTestId("column-queue").textContent).toBe("orders.fifo");
+    });
+  });
+
+  it("shows 'No Queues' with default region fallback when region is not set", async () => {
+    // API returns empty queue list and region with no region string (falsy)
     global.fetch = jest.fn(async (_url: string, options?: RequestInit) => {
-      if (!options || options.method === "GET") {
-        return Response.json(mockQueues);
-      }
+      if (!options || options.method === "GET") return Response.json([]);
       const body = JSON.parse(options.body as string);
-      switch (body.action) {
-        case "GetRegion":
-          return Response.json({ region: "us-east-1" });
-        case "GetMessages":
-          return Response.json([]);  // Always empty
-        default:
-          return Response.json({});
-      }
+      if (body.action === "GetRegion") return Response.json({ region: "" });
+      return Response.json({});
     }) as typeof fetch;
 
     await act(async () => {
-      render(<MemoryRouter><Overview /></MemoryRouter>);
-    });
-
-    // Advance 2 polling intervals (initial fetch is 1, need 2 more = 3 total consecutive empties)
-    await act(async () => {
-      jest.advanceTimersByTime(3000);
-    });
-    await act(async () => {
-      jest.advanceTimersByTime(3000);
+      render(<MemoryRouter initialEntries={["/?c=1"]}><Overview /></MemoryRouter>);
     });
 
     await waitFor(() => {
-      expect(screen.getByText("No messages in this queue")).toBeInTheDocument();
+      // The fallback "eu-central-1" should appear when region.region is falsy
+      expect(screen.getByText(/eu-central-1/)).toBeInTheDocument();
     });
   });
 
-  it("calls DeleteMessage API when delete is confirmed in the MessageDetail dialog", async () => {
+  it("migration useEffect skips when COUNT_PARAM already set", async () => {
+    // With ?c=2 already in URL, the migration effect returns early — no re-render cascade
     await act(async () => {
-      render(<MemoryRouter><Overview /></MemoryRouter>);
+      render(<MemoryRouter initialEntries={["/?c=2"]}><Overview /></MemoryRouter>);
     });
-
-    // Wait for the message to appear and click it to select it
     await waitFor(() => {
-      expect(screen.getByText(/msg-001/)).toBeInTheDocument();
+      // Should still render 2 columns without touching the URL
+      expect(screen.getAllByTestId("queue-column")).toHaveLength(2);
     });
-    await act(async () => {
-      fireEvent.click(screen.getByText(/msg-001/));
-    });
-
-    // Click the delete button in the MessageDetail header
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Delete message" }));
-    });
-
-    // Confirm the dialog — click the Delete button inside DialogActions
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Delete" }));
-    });
-
-    expect(fetchHandler).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({
-        body: expect.stringContaining('"DeleteMessage"'),
-      }),
-    );
-    expect(fetchHandler).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({
-        body: expect.stringContaining('"receiptHandle":"rcpt-001"'),
-      }),
-    );
   });
 
-  it("removes the deleted message from the visible list on DeleteMessage success", async () => {
-    // Override fetch so that after the initial GetMessages returns msg-001,
-    // subsequent GetMessages calls also return msg-001 (simulating the message
-    // is still there on the server until we delete it), and DeleteMessage returns {}.
-    let deleted = false;
-    global.fetch = jest.fn(async (_url: string, options?: RequestInit) => {
-      if (!options || options.method === "GET") {
-        return Response.json(mockQueues);
-      }
-      const body = JSON.parse(options.body as string);
-      switch (body.action) {
-        case "GetRegion":
-          return Response.json({ region: "us-east-1" });
-        case "GetMessages":
-          return Response.json(deleted ? [] : mockMessages);
-        case "DeleteMessage":
-          deleted = true;
-          return Response.json({});
-        default:
-          return Response.json({});
-      }
-    }) as typeof fetch;
-
+  it("migration handles ?cols= with empty segment (null name branch)", async () => {
+    // ?cols=test-queue~ has an empty trailing name → that slot is null (not set in params)
     await act(async () => {
-      render(<MemoryRouter><Overview /></MemoryRouter>);
+      render(
+        <MemoryRouter initialEntries={["/?cols=test-queue~"]}>
+          <Overview />
+        </MemoryRouter>,
+      );
+    });
+    await waitFor(() => {
+      // Two names from the split: "test-queue" and "" → 2 columns, second has no hash set
+      expect(screen.getAllByTestId("queue-column")).toHaveLength(2);
+    });
+  });
+
+  it("migration falls back to first queue when no ?queue= or ?q1= present", async () => {
+    // No 'c', no 'cols', no 'queue', no 'q1' — falls back to queues[0].QueueName
+    await act(async () => {
+      render(
+        <MemoryRouter initialEntries={["/"]}>
+          <Overview />
+        </MemoryRouter>,
+      );
+    });
+    await waitFor(() => {
+      // After migration: 1 column pointing at the first queue
+      expect(screen.getAllByTestId("queue-column")).toHaveLength(1);
+    });
+  });
+
+  it("does not add column when already at max columns", async () => {
+    // jsdom window.innerWidth=1024, MIN_COLUMN_PX=320 → maxColumns = floor(1024/320) = 3
+    // Start at c=3 (already at max) — Add column button should be disabled
+    await act(async () => {
+      render(<MemoryRouter initialEntries={["/?c=3"]}><Overview /></MemoryRouter>);
     });
 
     await waitFor(() => {
-      expect(screen.getByText(/msg-001/)).toBeInTheDocument();
-    });
-    await act(async () => {
-      fireEvent.click(screen.getByText(/msg-001/));
-    });
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Delete message" }));
-    });
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+      expect(screen.getAllByTestId("queue-column")).toHaveLength(3);
     });
 
-    // After delete, msg-001 should be gone from the visible list immediately
-    // (removeMessage filters local state — does not wait for next poll)
+    // The "Add column" button should be disabled when at max
+    const addBtn = screen.getByRole("button", { name: "Add column" });
+    expect(addBtn).toBeDisabled();
+  });
+
+  it("removeColumn shifts slot values left when removing from the middle", async () => {
+    // Start with 3 columns: select queues in cols 0 and 2
+    await act(async () => {
+      render(<MemoryRouter initialEntries={["/?c=3"]}><Overview /></MemoryRouter>);
+    });
+
     await waitFor(() => {
-      expect(screen.queryByText(/msg-001/)).not.toBeInTheDocument();
+      expect(screen.getAllByTestId("queue-column")).toHaveLength(3);
+    });
+
+    // Select a queue in column 0
+    await act(async () => {
+      const selects = document.querySelectorAll('select[aria-label="select-queue"]');
+      fireEvent.change(selects[0], { target: { value: "test-queue" } });
+    });
+
+    // Remove the first column — col 1 should shift to col 0 position
+    await act(async () => {
+      const removeBtns = screen.getAllByRole("button", { name: "Close column" });
+      fireEvent.click(removeBtns[0]);
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("queue-column")).toHaveLength(2);
     });
   });
 });

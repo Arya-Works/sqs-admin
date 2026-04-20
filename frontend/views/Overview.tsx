@@ -1,186 +1,163 @@
 import React, { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Alert as MuiAlert, AlertTitle, Box, Container, Typography } from "@mui/material";
+import { Alert as MuiAlert, AlertTitle, Box, Container } from "@mui/material";
 import useQueueList from "../hooks/useQueueList";
-import useMessagePoller from "../hooks/useMessagePoller";
-import useQueueActions from "../hooks/useQueueActions";
+import { callApi } from "../api/Http";
 import Alert from "../components/Alert";
 import AppShell from "./AppShell";
-import MessageInbox from "./MessageInbox";
-import MessageDetail from "./MessageDetail";
-import { SqsMessage } from "../types";
-import { callApi } from "../api/Http";
+import QueueColumn from "./QueueColumn";
+import { Queue } from "../types";
 
-/** Composition shell: wires hooks to the three-pane layout. No business logic. */
+const MIN_COLUMN_PX = 320;
+
+/** djb2 hash → 6-char base-36 string. Compresses queue names in the URL. */
+const hashQueue = (name: string): string => {
+  let h = 5381;
+  for (let i = 0; i < name.length; i++) {
+    h = (((h << 5) + h) ^ name.charCodeAt(i)) >>> 0;
+  }
+  return h.toString(36).padStart(6, "0").slice(0, 6);
+};
+
+const slotParam = (i: number) => `q${i + 1}`;
+const COUNT_PARAM = "c";
+
+/** Multi-column layout — column count and queue selections all in the URL.
+ *  Queue names are hashed (djb2, 6 base-36 chars) to keep URLs compact.
+ *  Format: ?c=3&q1=abc123&q3=def456  (absent qN = empty column) */
 const Overview = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const {
-    queues,
-    region,
-    disabledStatus,
-    error: listError,
-    reloadQueues,
-    clearError: clearListError,
-  } = useQueueList();
-  const selectedQueueName = searchParams.get("queue");
-  const selectedQueue =
-    queues.find((q) => q.QueueName === selectedQueueName) ?? queues[0] ?? null;
-  const poller = useMessagePoller(selectedQueue);
-  const actions = useQueueActions(
-    selectedQueue,
-    reloadQueues,
-    poller.clearMessages,
-  );
-  const error = listError || poller.error || actions.error;
-  const clearAllErrors = () => {
-    clearListError();
-    poller.clearError();
-    actions.clearError();
-  };
-  const selectQueue = (queueName: string) =>
-    setSearchParams({ queue: queueName });
+  const { queues, region, error: listError, reloadQueues, clearError: clearListError } = useQueueList();
+  const [globalPaused, setGlobalPaused] = useState(false);
 
-  // Selected message state — transient UI state, not domain state
-  const [selectedMessage, setSelectedMessage] = useState<SqsMessage | null>(
-    null,
+  const maxColumns = Math.max(1, Math.floor(window.innerWidth / MIN_COLUMN_PX));
+  const columnCount = Math.min(
+    Math.max(1, parseInt(searchParams.get(COUNT_PARAM) ?? "1", 10) || 1),
+    maxColumns,
   );
 
-  // Clear selected message when queue changes
+  // Migrate old ?cols= or ?q1=queueName (unhashed) params to new hashed format
   useEffect(() => {
-    setSelectedMessage(null);
-  }, [selectedQueue?.QueueName]);
+    if (searchParams.get(COUNT_PARAM)) return;
+    if (queues.length === 0) return;
 
-  // Clear selected message when it disappears from the messages list (e.g., after purge)
-  useEffect(() => {
-    if (
-      selectedMessage &&
-      !poller.messages.find(
-        (m) => m.messageId === selectedMessage.messageId,
-      )
-    ) {
-      setSelectedMessage(null);
+    const params = new URLSearchParams();
+
+    // Legacy ?cols= format
+    const cols = searchParams.get("cols");
+    if (cols) {
+      const names = cols.split("~").map((n) => n || null);
+      params.set(COUNT_PARAM, String(names.length));
+      names.forEach((name, i) => {
+        if (name) params.set(slotParam(i), hashQueue(name));
+      });
+      setSearchParams(params, { replace: true });
+      return;
     }
-  }, [poller.messages, selectedMessage]);
 
-  const handleDeleteMessage = (message: SqsMessage) => {
-    if (!selectedQueue) return;
-    // Compute remaining locally BEFORE dispatching state update — React state is async,
-    // and reading poller.messages after removeMessage would return stale data.
-    const currentIndex = poller.messages.findIndex(
-      (m) => m.messageId === message.messageId,
-    );
-    const remaining = poller.messages.filter(
-      (m) => m.messageId !== message.messageId,
-    );
-    callApi({
-      method: "POST",
-      action: "DeleteMessage",
-      queue: selectedQueue,
-      message: message,
-      onSuccess: () => {
-        poller.removeMessage(message.messageId!);
-        if (remaining.length === 0) {
-          setSelectedMessage(null);
-        } else {
-          const nextIndex = Math.min(currentIndex, remaining.length - 1);
-          setSelectedMessage(remaining[nextIndex]);
-        }
-      },
-      onError: (err: string) => {
-        // eslint-disable-next-line no-console
-        console.error("DeleteMessage failed:", err);
-      },
+    // Legacy ?q1=queueName (unhashed) or ?queue=
+    const legacy: (string | null)[] = [];
+    let i = 0;
+    let q: string | null;
+    while ((q = searchParams.get(`q${i + 1}`))) { legacy.push(q); i++; }
+    const oldQueue = searchParams.get("queue");
+    if (legacy.length === 0) legacy.push(oldQueue ?? queues[0].QueueName);
+
+    params.set(COUNT_PARAM, String(legacy.length));
+    legacy.forEach((name, idx) => {
+      if (name) params.set(slotParam(idx), hashQueue(name));
     });
+    setSearchParams(params, { replace: true });
+  }, [queues]);
+
+  const getSlotQueue = (i: number): Queue | null => {
+    const h = searchParams.get(slotParam(i));
+    if (!h) return null;
+    return queues.find((q) => hashQueue(q.QueueName) === h) ?? null;
   };
 
-  useEffect(() => {
-    if (queues.length > 0) {
-      const urlQueue = searchParams.get("queue");
-      if (!urlQueue || !queues.find((q) => q.QueueName === urlQueue)) {
-        setSearchParams({ queue: queues[0].QueueName }, { replace: true });
-      }
+  const setSlotQueue = (i: number, queueName: string) => {
+    const params = new URLSearchParams(searchParams);
+    params.set(slotParam(i), hashQueue(queueName));
+    setSearchParams(params);
+  };
+
+  const setCount = (next: number) => {
+    const params = new URLSearchParams(searchParams);
+    params.set(COUNT_PARAM, String(next));
+    // Clear slots beyond the new count
+    for (let i = next; i < columnCount; i++) params.delete(slotParam(i));
+    setSearchParams(params);
+  };
+
+  const addColumn = () => {
+    if (columnCount < maxColumns) setCount(columnCount + 1);
+  };
+
+  const removeColumn = (index: number) => {
+    const params = new URLSearchParams(searchParams);
+    // Shift slots left
+    for (let i = index; i < columnCount - 1; i++) {
+      const next = params.get(slotParam(i + 1));
+      if (next) params.set(slotParam(i), next);
+      else params.delete(slotParam(i));
     }
-  }, [queues, searchParams, setSearchParams]);
+    params.delete(slotParam(columnCount - 1));
+    params.set(COUNT_PARAM, String(Math.max(1, columnCount - 1)));
+    setSearchParams(params);
+  };
+
+  const handleCreateQueue = (queue: Queue) => {
+    callApi({ method: "POST", action: "CreateQueue", queue, onSuccess: reloadQueues, onError: () => {} });
+  };
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", height: "100vh" }}>
-      <AppShell
-        queues={queues}
-        region={region}
-        selectedQueue={selectedQueue}
-        pollingPaused={poller.pollingPaused}
-        perQueuePaused={poller.perQueuePaused}
-        disabledStatus={disabledStatus}
-        onSelectQueue={selectQueue}
-        onToggleGlobalPause={() => poller.setPollingPaused((p) => !p)}
-        onToggleQueuePause={(name) =>
-          poller.setPerQueuePaused((prev) => ({
-            ...prev,
-            [name]: !prev[name],
-          }))
-        }
-        onCreateQueue={actions.createNewQueue}
-        onDeleteQueue={actions.deleteCurrentQueue}
-        onSendMessage={actions.sendMessageToCurrentQueue}
-        onPurgeQueue={actions.purgeCurrentQueue}
-        lastUpdatedAt={poller.lastUpdatedAt}
-        consecutiveEmptyCount={poller.consecutiveEmptyCount}
-      />
-      {error !== "" && (
-        <Container maxWidth="md" sx={{ mt: 1 }}>
-          <Alert message={error} severity="error" onClose={clearAllErrors} />
-        </Container>
-      )}
-      {queues?.length === 0 && (
-        <Container maxWidth="md" sx={{ mt: 1 }}>
-          <MuiAlert severity="info">
-            <AlertTitle>No Queue</AlertTitle>
-            {`No Queues exist in region: ${region.region ? region.region : "eu-central-1"}`}
-          </MuiAlert>
-        </Container>
-      )}
-      {/* Content area: show split only when there are messages to display */}
-      <Box sx={{ display: "flex", flexGrow: 1, overflow: "hidden" }}>
-        {poller.messages.length > 0 ? (
-          // Split layout: inbox (38%) + detail (62%)
-          <>
-            <MessageInbox
-              messages={poller.messages}
-              selectedMessageId={selectedMessage?.messageId ?? null}
-              consecutiveEmptyCount={poller.consecutiveEmptyCount}
-              selectedQueue={selectedQueue}
-              onSelectMessage={setSelectedMessage}
-            />
-            <MessageDetail
-              message={selectedMessage}
-              onDelete={handleDeleteMessage}
-            />
-          </>
-        ) : (
-          // Full-width empty state — no split when nothing to show
-          <Box
-            sx={{
-              flexGrow: 1,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 1,
-              color: "text.secondary",
-            }}
-          >
-            <Typography variant="body1">
-              {!selectedQueue
-                ? "Select a queue to view messages"
-                : "No messages in this queue"}
-            </Typography>
-            {selectedQueue && (
-              <Typography variant="caption">
-                Polling every 3s — messages will appear as they arrive
-              </Typography>
-            )}
-          </Box>
+      <Box
+        sx={{
+          display: "flex", flexDirection: "column", flexGrow: 1, overflow: "hidden",
+          maxWidth: Math.max(columnCount * 480, 1440),
+          transition: "max-width 0.3s ease",
+          width: "100%", mx: "auto",
+          bgcolor: "background.paper",
+          borderLeft: "1px solid", borderRight: "1px solid", borderColor: "divider",
+        }}
+      >
+        <AppShell
+          region={region}
+          globalPaused={globalPaused}
+          onToggleGlobalPause={() => setGlobalPaused((p) => !p)}
+          onCreateQueue={handleCreateQueue}
+          canAddColumn={columnCount < maxColumns}
+          onAddColumn={addColumn}
+        />
+        {listError && (
+          <Container maxWidth="md" sx={{ mt: 1 }}>
+            <Alert message={listError} severity="error" onClose={clearListError} />
+          </Container>
         )}
+        {queues.length === 0 && (
+          <Container maxWidth="md" sx={{ mt: 1 }}>
+            <MuiAlert severity="info">
+              <AlertTitle>No Queues</AlertTitle>
+              {`No queues in region: ${region.region || "eu-central-1"}`}
+            </MuiAlert>
+          </Container>
+        )}
+        <Box sx={{ display: "flex", flexGrow: 1, overflow: "hidden" }}>
+          {Array.from({ length: columnCount }, (_, i) => (
+            <QueueColumn
+              key={i}
+              queues={queues}
+              queue={getSlotQueue(i)}
+              onSelectQueue={(name) => setSlotQueue(i, name)}
+              reloadQueues={reloadQueues}
+              globalPaused={globalPaused}
+              showBorder={i < columnCount - 1}
+              onRemove={columnCount > 1 ? () => removeColumn(i) : undefined}
+            />
+          ))}
+        </Box>
       </Box>
     </Box>
   );

@@ -59,7 +59,8 @@ export interface ApiCall {
     | "GetMessages"
     | "SendMessage"
     | "GetRegion"
-    | "DeleteMessage";
+    | "DeleteMessage"
+    | "SetQueueAttributes";
   queue?: Queue;
   message?: any;
   onSuccess: any;

@@ -337,4 +337,107 @@ describe("useMessagePoller", () => {
       expect(result.current.consecutiveEmptyCount.current).toBeGreaterThanOrEqual(3);
     });
   });
+
+  it("clearMessages resets messages to [] and consecutiveEmptyCount to 0", async () => {
+    const { result } = renderHook(() => useMessagePoller(mockQueue));
+
+    // Wait for initial fetch to populate messages
+    await waitFor(() => {
+      expect(result.current.messages.length).toBeGreaterThan(0);
+    });
+
+    // Manually bump the ref to confirm reset
+    result.current.consecutiveEmptyCount.current = 5;
+
+    act(() => {
+      result.current.clearMessages();
+    });
+
+    expect(result.current.messages).toHaveLength(0);
+    expect(result.current.consecutiveEmptyCount.current).toBe(0);
+    expect(result.current.lastUpdatedAt).toBeNull();
+  });
+
+  it("removeMessage removes only the matching message by id", async () => {
+    global.fetch = jest.fn(async (_url: string, options?: RequestInit) => {
+      const body = JSON.parse(options?.body as string);
+      if (body.action === "GetMessages") {
+        return Response.json([
+          { messageBody: "first", messageId: "msg-001" },
+          { messageBody: "second", messageId: "msg-002" },
+        ]);
+      }
+      return Response.json({});
+    }) as typeof fetch;
+
+    const { result } = renderHook(() => useMessagePoller(mockQueue));
+
+    await waitFor(() => {
+      expect(result.current.messages.length).toBe(2);
+    });
+
+    act(() => {
+      result.current.removeMessage("msg-001");
+    });
+
+    expect(result.current.messages).toHaveLength(1);
+    expect(result.current.messages[0].messageId).toBe("msg-002");
+  });
+
+  it("clearError clears the error state", async () => {
+    // Force a fetch error so error state is set
+    global.fetch = jest.fn(async () => {
+      throw new Error("network failure");
+    }) as typeof fetch;
+
+    const { result } = renderHook(() => useMessagePoller(mockQueue));
+
+    await waitFor(() => {
+      expect(result.current.error).toBe("network failure");
+    });
+
+    act(() => {
+      result.current.clearError();
+    });
+
+    expect(result.current.error).toBe("");
+  });
+
+  it("does NOT poll when externalPaused is true", async () => {
+    const { result } = renderHook(() => useMessagePoller(mockQueue, true));
+
+    // Drain any mount-time effects — the useEffect fires pollMessages regardless
+    // of externalPaused; externalPaused only gates the interval callback.
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const callsBefore = (global.fetch as jest.Mock).mock.calls.filter(
+      ([, opts]: [string, RequestInit?]) => {
+        try {
+          return JSON.parse(opts?.body as string).action === "GetMessages";
+        } catch {
+          return false;
+        }
+      },
+    ).length;
+
+    await act(async () => {
+      jest.advanceTimersByTime(9000);
+      await Promise.resolve();
+    });
+
+    const callsAfter = (global.fetch as jest.Mock).mock.calls.filter(
+      ([, opts]: [string, RequestInit?]) => {
+        try {
+          return JSON.parse(opts?.body as string).action === "GetMessages";
+        } catch {
+          return false;
+        }
+      },
+    ).length;
+
+    // Interval should not have fired any additional polls
+    expect(callsAfter).toBe(callsBefore);
+  });
 });
