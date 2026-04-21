@@ -18,6 +18,7 @@ type Request struct {
 	Action     string     `json:"action"`
 	SqsQueue   SqsQueue   `json:"queue"`
 	SqsMessage SqsMessage `json:"message"`
+	Region     string     `json:"region"`
 }
 
 type AwsRegion struct {

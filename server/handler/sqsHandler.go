@@ -85,6 +85,19 @@ func SQSHandler() Handler {
 						Payload:    response,
 						StatusCode: http.StatusOK,
 					})
+				case "SetRegion":
+					if payload.Region == "" {
+						respondJSON(writer, Response{
+							Payload:    "region is required",
+							StatusCode: http.StatusBadRequest,
+						})
+						return
+					}
+					aws.SetRegion(payload.Region)
+					respondJSON(writer, Response{
+						Payload:    types.AwsRegion{Region: payload.Region},
+						StatusCode: http.StatusOK,
+					})
 				default:
 					log.Printf("Unsupported action provided [%v]", payload.Action)
 					respondJSON(writer, Response{

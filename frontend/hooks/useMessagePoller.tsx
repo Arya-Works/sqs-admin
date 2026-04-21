@@ -6,75 +6,78 @@ import { Queue, SqsMessage } from "../types";
 interface UseMessagePollerReturn {
   messages: SqsMessage[];
   lastUpdatedAt: Date | null;
+  isLoading: boolean;
+  hasLoaded: boolean;
   consecutiveEmptyCount: React.MutableRefObject<number>;
-  pollingPaused: boolean;
-  setPollingPaused: React.Dispatch<React.SetStateAction<boolean>>;
-  perQueuePaused: Record<string, boolean>;
-  setPerQueuePaused: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   clearMessages: () => void;
+  refreshMessages: () => void;
   removeMessage: (messageId: string) => void;
   clearError: () => void;
   error: string;
 }
 
-/** Polls SQS for messages every 3 seconds. Implements stale-while-revalidate: holds stale
- *  messages until 3 consecutive empty responses, then clears. */
-const useMessagePoller = (selectedQueue: Queue | null, externalPaused = false): UseMessagePollerReturn => {
+/** Polls SQS for messages every second. Accumulates messages — only clears on queue switch,
+ *  purge, or explicit delete. */
+const useMessagePoller = (selectedQueue: Queue | null): UseMessagePollerReturn => {
   const [messages, setMessages] = useState<SqsMessage[]>([]);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const consecutiveEmptyCount = useRef(0);
-  const [pollingPaused, setPollingPaused] = useState(false);
-  const [perQueuePaused, setPerQueuePaused] = useState<Record<string, boolean>>({});
   const [error, setError] = useState("");
 
   const pollMessages = async () => {
     if (!selectedQueue?.QueueUrl) return;
 
+    setIsLoading(true);
     await callApi({
       method: "POST",
       action: "GetMessages",
       queue: selectedQueue,
       onSuccess: (data: SqsMessage[]) => {
+        setIsLoading(false);
+        setHasLoaded(true);
         if (data.length > 0) {
           consecutiveEmptyCount.current = 0;
           setMessages(data);
           setLastUpdatedAt(new Date());
         } else {
           consecutiveEmptyCount.current += 1;
-          if (consecutiveEmptyCount.current >= 3) {
-            setMessages([]);
-          }
-          // else: hold existing messages — stale-while-revalidate
+          // Hold existing messages on empty response — VisibilityTimeout means messages
+          // are temporarily invisible, not gone. Never auto-clear from polling.
         }
       },
-      onError: setError,
+      onError: (err) => { setIsLoading(false); setHasLoaded(true); setError(err); },
     });
   };
 
   useInterval(async () => {
-    if (!pollingPaused && !perQueuePaused[selectedQueue?.QueueName ?? ""] && !externalPaused) {
-      await pollMessages();
-    }
-  }, 3000);
+    await pollMessages();
+  }, selectedQueue ? 1000 : null);
 
   useEffect(() => {
     consecutiveEmptyCount.current = 0;
     setMessages([]);
     setLastUpdatedAt(null);
+    setHasLoaded(false);
     if (selectedQueue) {
       pollMessages();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedQueue?.QueueName]);
 
-  /** Narrows the interface per ISP — callers don't need raw setMessages access. */
   const clearMessages = () => {
     setMessages([]);
     consecutiveEmptyCount.current = 0;
     setLastUpdatedAt(null);
   };
 
-  /** Narrow removal — mirrors clearMessages per ISP. Pure filter, no side effects beyond state. */
+  const refreshMessages = () => {
+    clearMessages();
+    setHasLoaded(false);
+    pollMessages();
+  };
+
   const removeMessage = (messageId: string) => {
     setMessages((prev) => prev.filter((m) => m.messageId !== messageId));
   };
@@ -84,12 +87,11 @@ const useMessagePoller = (selectedQueue: Queue | null, externalPaused = false): 
   return {
     messages,
     lastUpdatedAt,
+    isLoading,
+    hasLoaded,
     consecutiveEmptyCount,
-    pollingPaused,
-    setPollingPaused,
-    perQueuePaused,
-    setPerQueuePaused,
     clearMessages,
+    refreshMessages,
     removeMessage,
     clearError,
     error,

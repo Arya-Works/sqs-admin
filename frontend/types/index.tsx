@@ -59,10 +59,12 @@ export interface ApiCall {
     | "GetMessages"
     | "SendMessage"
     | "GetRegion"
+    | "SetRegion"
     | "DeleteMessage"
     | "SetQueueAttributes";
   queue?: Queue;
   message?: any;
+  region?: string;
   onSuccess: any;
   onError: (error: string) => void;
 }

@@ -53,40 +53,51 @@ func receiveMessages(queueUrl *string) (*sqs.ReceiveMessageOutput, error) {
 		QueueUrl:              queueUrl,
 		AttributeNames:        []awsTypes.QueueAttributeName{awsTypes.QueueAttributeNameAll},
 		MessageAttributeNames: []string{"All"},
-		VisibilityTimeout:     30,
-		MaxNumberOfMessages:   10,
-		WaitTimeSeconds:       1,
+		VisibilityTimeout:   5,
+		MaxNumberOfMessages: 10,
 	})
 }
 
 func GetMessages(queueUrl string) ([]types.SqsMessage, error) {
-	var sqsMessages = make([]types.SqsMessage, 0)
-	messages, err := receiveMessages(&queueUrl)
-	if err != nil {
-		return nil, err
-	}
-	for _, message := range messages.Messages {
-		customAttrs := make(map[string]string)
-		for key, val := range message.MessageAttributes {
-			if val.StringValue != nil {
-				customAttrs[key] = *val.StringValue
+	seen := make(map[string]bool)
+	result := make([]types.SqsMessage, 0)
+
+	// Drain up to 10 batches (100 messages) so all visible messages are returned at once.
+	// Each batch makes its messages invisible for VisibilityTimeout seconds, so successive
+	// calls return distinct messages until the queue is drained.
+	for i := 0; i < 10; i++ {
+		batch, err := receiveMessages(&queueUrl)
+		if err != nil {
+			return nil, err
+		}
+		if len(batch.Messages) == 0 {
+			break
+		}
+		for _, message := range batch.Messages {
+			if message.MessageId == nil || seen[*message.MessageId] {
+				continue
 			}
+			if message.ReceiptHandle == nil {
+				log.Printf("Warning: message %v has nil ReceiptHandle, skipping", *message.MessageId)
+				continue
+			}
+			seen[*message.MessageId] = true
+			customAttrs := make(map[string]string)
+			for key, val := range message.MessageAttributes {
+				if val.StringValue != nil {
+					customAttrs[key] = *val.StringValue
+				}
+			}
+			result = append(result, types.SqsMessage{
+				MessageId:         *message.MessageId,
+				MessageBody:       *message.Body,
+				MessageAttributes: message.Attributes,
+				CustomAttributes:  customAttrs,
+				ReceiptHandle:     *message.ReceiptHandle,
+			})
 		}
-
-		if message.ReceiptHandle == nil {
-			log.Printf("Warning: message %v has nil ReceiptHandle, skipping", *message.MessageId)
-			continue
-		}
-
-		sqsMessages = append(sqsMessages, types.SqsMessage{
-			MessageId:         *message.MessageId,
-			MessageBody:       *message.Body,
-			MessageAttributes: message.Attributes,
-			CustomAttributes:  customAttrs,
-			ReceiptHandle:     *message.ReceiptHandle,
-		})
 	}
-	return sqsMessages, nil
+	return result, nil
 }
 
 func PurgeQueue(queueUrl string) (*sqs.PurgeQueueOutput, error) {

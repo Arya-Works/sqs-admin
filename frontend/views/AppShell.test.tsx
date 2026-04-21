@@ -5,8 +5,6 @@ import AppShell from "./AppShell";
 
 const baseProps = {
   region: { region: "us-east-1" },
-  globalPaused: false,
-  onToggleGlobalPause: jest.fn(),
   onCreateQueue: jest.fn(),
   onAddColumn: jest.fn(),
   canAddColumn: true,
@@ -26,23 +24,6 @@ describe("<AppShell />", () => {
   it("displays the region chip", () => {
     render(<AppShell {...baseProps} />);
     expect(screen.getByText("us-east-1")).toBeInTheDocument();
-  });
-
-  it("shows Pause all polling button when not paused", () => {
-    render(<AppShell {...baseProps} />);
-    expect(screen.getByLabelText("Pause all polling")).toBeInTheDocument();
-  });
-
-  it("shows Resume all polling button when globalPaused is true", () => {
-    render(<AppShell {...baseProps} globalPaused={true} />);
-    expect(screen.getByLabelText("Resume all polling")).toBeInTheDocument();
-  });
-
-  it("calls onToggleGlobalPause when pause button is clicked", () => {
-    const onToggle = jest.fn();
-    render(<AppShell {...baseProps} onToggleGlobalPause={onToggle} />);
-    fireEvent.click(screen.getByLabelText("Pause all polling"));
-    expect(onToggle).toHaveBeenCalledTimes(1);
   });
 
   it("add column button is enabled when canAddColumn is true", () => {

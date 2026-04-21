@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Alert as MuiAlert, AlertTitle, Box, Container } from "@mui/material";
 import useQueueList from "../hooks/useQueueList";
+import useInterval from "../hooks/useInterval";
 import { callApi } from "../api/Http";
 import Alert from "../components/Alert";
 import AppShell from "./AppShell";
@@ -9,6 +10,7 @@ import QueueColumn from "./QueueColumn";
 import { Queue } from "../types";
 
 const MIN_COLUMN_PX = 320;
+const REGION_PARAM = "region";
 
 /** djb2 hash → 6-char base-36 string. Compresses queue names in the URL. */
 const hashQueue = (name: string): string => {
@@ -27,8 +29,11 @@ const COUNT_PARAM = "c";
  *  Format: ?c=3&q1=abc123&q3=def456  (absent qN = empty column) */
 const Overview = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { queues, region, error: listError, reloadQueues, clearError: clearListError } = useQueueList();
-  const [globalPaused, setGlobalPaused] = useState(false);
+  const urlRegion = searchParams.get(REGION_PARAM) ?? undefined;
+  const { queues, region, isLoading, error: listError, reloadQueues, clearError: clearListError, changeRegion } = useQueueList(urlRegion);
+
+  // Keep queue attributes (message counts) fresh for all queues, including unselected ones
+  useInterval(reloadQueues, 10_000);
 
   const maxColumns = Math.max(1, Math.floor(window.innerWidth / MIN_COLUMN_PX));
   const columnCount = Math.min(
@@ -107,6 +112,23 @@ const Overview = () => {
     setSearchParams(params);
   };
 
+  // After GetRegion resolves (no URL param on load), write it into the URL
+  useEffect(() => {
+    if (region.region && !searchParams.get(REGION_PARAM)) {
+      const params = new URLSearchParams(searchParams);
+      params.set(REGION_PARAM, region.region);
+      setSearchParams(params, { replace: true });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [region.region]);
+
+  const handleRegionChange = (newRegion: string) => {
+    changeRegion(newRegion);
+    const params = new URLSearchParams(searchParams);
+    params.set(REGION_PARAM, newRegion);
+    setSearchParams(params, { replace: true });
+  };
+
   const handleCreateQueue = (queue: Queue) => {
     callApi({ method: "POST", action: "CreateQueue", queue, onSuccess: reloadQueues, onError: () => {} });
   };
@@ -125,18 +147,17 @@ const Overview = () => {
       >
         <AppShell
           region={region}
-          globalPaused={globalPaused}
-          onToggleGlobalPause={() => setGlobalPaused((p) => !p)}
           onCreateQueue={handleCreateQueue}
           canAddColumn={columnCount < maxColumns}
           onAddColumn={addColumn}
+          onRegionChange={handleRegionChange}
         />
         {listError && (
           <Container maxWidth="md" sx={{ mt: 1 }}>
             <Alert message={listError} severity="error" onClose={clearListError} />
           </Container>
         )}
-        {queues.length === 0 && (
+        {!isLoading && queues.length === 0 && (
           <Container maxWidth="md" sx={{ mt: 1 }}>
             <MuiAlert severity="info">
               <AlertTitle>No Queues</AlertTitle>
@@ -152,7 +173,6 @@ const Overview = () => {
               queue={getSlotQueue(i)}
               onSelectQueue={(name) => setSlotQueue(i, name)}
               reloadQueues={reloadQueues}
-              globalPaused={globalPaused}
               showBorder={i < columnCount - 1}
               onRemove={columnCount > 1 ? () => removeColumn(i) : undefined}
             />

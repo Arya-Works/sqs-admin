@@ -13,7 +13,6 @@ jest.mock("../hooks/useInterval", () => jest.fn());
 import useMessagePoller from "../hooks/useMessagePoller";
 import useQueueActions from "../hooks/useQueueActions";
 
-const mockSetPollingPaused = jest.fn();
 const mockClearMessages = jest.fn();
 const mockRemoveMessage = jest.fn();
 const mockClearPollerError = jest.fn();
@@ -22,10 +21,6 @@ const mockPollerBase = {
   messages: [],
   lastUpdatedAt: null,
   consecutiveEmptyCount: { current: 0 },
-  pollingPaused: false,
-  setPollingPaused: mockSetPollingPaused,
-  perQueuePaused: {},
-  setPerQueuePaused: jest.fn(),
   clearMessages: mockClearMessages,
   removeMessage: mockRemoveMessage,
   clearError: mockClearPollerError,
@@ -58,7 +53,6 @@ const defaultProps = {
   queue: null as typeof baseQueue | null,
   onSelectQueue: jest.fn(),
   reloadQueues: jest.fn(),
-  globalPaused: false,
   showBorder: false,
 };
 
@@ -90,18 +84,6 @@ describe("<QueueColumn />", () => {
     render(<QueueColumn {...defaultProps} queue={baseQueue} />);
     // The chip label should show 2 (Math.max(approx=0, messages.length=2))
     expect(screen.getByText("2")).toBeInTheDocument();
-  });
-
-  it("shows polling dot icon button when queue is selected", () => {
-    render(<QueueColumn {...defaultProps} queue={baseQueue} />);
-    // MUI Tooltip passes its title as aria-label to the wrapped IconButton
-    expect(screen.getByLabelText("Pause polling")).toBeInTheDocument();
-  });
-
-  it("clicking polling dot calls setPollingPaused toggle", () => {
-    render(<QueueColumn {...defaultProps} queue={baseQueue} />);
-    fireEvent.click(screen.getByLabelText("Pause polling"));
-    expect(mockSetPollingPaused).toHaveBeenCalledTimes(1);
   });
 
   it("shows Close column button when onRemove is provided", () => {

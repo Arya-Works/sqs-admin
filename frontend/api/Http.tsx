@@ -14,6 +14,7 @@ const callApi = async (apiCall: ApiCall) => {
             action: apiCall.action,
             queue: apiCall.queue,
             message: apiCall.message ? apiCall.message : "",
+            region: apiCall.region ?? "",
           })
         : null,
     });

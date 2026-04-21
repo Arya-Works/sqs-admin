@@ -9,22 +9,26 @@ import (
 	"github.com/pacoVK/utils"
 )
 
-var localStackResolver = aws.EndpointResolverWithOptionsFunc(func(service, region string, options ...interface{}) (aws.Endpoint, error) {
-	return aws.Endpoint{
-		PartitionID:   "aws",
-		URL:           utils.GetEnv("SQS_ENDPOINT_URL", "http://localhost:4566"),
-		SigningRegion: utils.GetEnv("SQS_AWS_REGION", "eu-central-1"),
-	}, nil
-})
+func buildClient(region string) *sqs.Client {
+	resolver := aws.EndpointResolverWithOptionsFunc(func(service, reg string, options ...interface{}) (aws.Endpoint, error) {
+		return aws.Endpoint{
+			PartitionID:   "aws",
+			URL:           utils.GetEnv("SQS_ENDPOINT_URL", "http://localhost:4566"),
+			SigningRegion: region,
+		}, nil
+	})
+	cfg, _ := config.LoadDefaultConfig(context.TODO(),
+		config.WithCredentialsProvider(
+			credentials.NewStaticCredentialsProvider("ACCESS_KEY", "SECRET_KEY", "TOKEN"),
+		),
+		config.WithEndpointResolverWithOptions(resolver),
+		config.WithRegion(region),
+	)
+	return sqs.NewFromConfig(cfg)
+}
 
-var awsConfig, _ = config.LoadDefaultConfig(context.TODO(),
-	config.WithCredentialsProvider(
-		credentials.NewStaticCredentialsProvider("ACCESS_KEY", "SECRET_KEY", "TOKEN"),
-	),
-	config.WithEndpointResolverWithOptions(localStackResolver),
-	config.WithRegion(
-		utils.GetEnv("SQS_AWS_REGION", "eu-central-1"),
-	),
-)
+var sqsClient = buildClient(utils.GetEnv("SQS_AWS_REGION", "eu-central-1"))
 
-var sqsClient = sqs.NewFromConfig(awsConfig)
+func SetRegion(region string) {
+	sqsClient = buildClient(region)
+}

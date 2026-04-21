@@ -6,8 +6,8 @@ import {
   Autocomplete,
   Box,
   Button,
-  ButtonGroup,
   Chip,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -22,12 +22,10 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import CloseIcon from "@mui/icons-material/Close";
-import PauseCircleOutline from "@mui/icons-material/PauseCircleOutline";
-import PlayCircleOutline from "@mui/icons-material/PlayCircleOutline";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import { JSONTree } from "react-json-tree";
 import useMessagePoller from "../hooks/useMessagePoller";
 import useQueueActions from "../hooks/useQueueActions";
-import useInterval from "../hooks/useInterval";
 import SendMessageDialog from "../components/SendMessageDialog";
 import Alert from "../components/Alert";
 import { Queue, SqsMessage } from "../types";
@@ -40,7 +38,6 @@ interface QueueColumnProps {
   queue: Queue | null;
   onSelectQueue: (queueName: string) => void;
   reloadQueues: () => void;
-  globalPaused: boolean;
   showBorder: boolean;
   onRemove?: () => void;
 }
@@ -50,11 +47,10 @@ const QueueColumn = ({
   queue,
   onSelectQueue,
   reloadQueues,
-  globalPaused,
   showBorder,
   onRemove,
 }: QueueColumnProps) => {
-  const poller = useMessagePoller(queue, globalPaused);
+  const poller = useMessagePoller(queue);
   const actions = useQueueActions(queue, reloadQueues, poller.clearMessages);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [bodyView, setBodyView] = useState<"tree" | "raw">("tree");
@@ -62,16 +58,6 @@ const QueueColumn = ({
   const [confirmPurge, setConfirmPurge] = useState(false);
   const [confirmDeleteQueue, setConfirmDeleteQueue] = useState(false);
   const [deletingMsg, setDeletingMsg] = useState<SqsMessage | null>(null);
-
-  // Refresh queue attributes — faster when messages are present, slower when empty
-  const knownCount = Math.max(
-    parseInt(queue?.QueueAttributes?.ApproximateNumberOfMessages ?? "0", 10),
-    poller.messages.length,
-  );
-  const attrRefreshMs = queue && !globalPaused ? (knownCount > 0 ? 3000 : 10000) : null;
-  useInterval(reloadQueues, attrRefreshMs);
-
-  const isActive = queue != null && !globalPaused && !poller.pollingPaused;
 
   const handleExpand = (msgId: string) =>
     setExpandedId((prev) => (prev === msgId ? null : msgId));
@@ -156,28 +142,22 @@ const QueueColumn = ({
               );
             }}
           />
-          {queue && (
-            <>
-              {(() => {
-                const approx = parseInt(queue.QueueAttributes?.ApproximateNumberOfMessages ?? "0", 10);
-                const count = Math.max(approx, poller.messages.length);
-                return count > 0 ? (
-                  <Chip label={count} size="small" variant="outlined"
-                    sx={{ fontFamily: "monospace", fontSize: "11px", fontWeight: 700 }} />
-                ) : null;
-              })()}
-              <Tooltip title={isActive ? "Pause polling" : "Resume polling"}>
-                <IconButton size="small" onClick={() => poller.setPollingPaused((p) => !p)}>
-                  <Box sx={{ width: 8, height: 8, borderRadius: "50%",
-                    bgcolor: isActive ? "success.main" : "action.disabled",
-                    animation: isActive ? "pulse 1.5s ease-in-out infinite" : "none" }} />
-                </IconButton>
-              </Tooltip>
-            </>
-          )}
+          {queue && (() => {
+            const approx = parseInt(queue.QueueAttributes?.ApproximateNumberOfMessages ?? "0", 10);
+            const count = Math.max(approx, poller.messages.length);
+            return count > 0 ? (
+              <Chip label={count} size="small" variant="outlined"
+                sx={{ fontFamily: "monospace", fontSize: "11px", fontWeight: 700 }} />
+            ) : null;
+          })()}
         </Box>
         {queue && (
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+            <Tooltip title="Refresh messages">
+              <IconButton size="small" onClick={poller.refreshMessages} aria-label="Refresh messages">
+                <RefreshIcon sx={{ fontSize: 16 }} />
+              </IconButton>
+            </Tooltip>
             <SendMessageDialog disabled={!queue} onSubmit={actions.sendMessageToCurrentQueue} queue={queue} />
             <Button size="small" variant="text" color="error" onClick={() => setConfirmPurge(true)}>
               Purge
@@ -220,25 +200,24 @@ const QueueColumn = ({
         </Box>
       )}
 
-      {queue && poller.messages.length === 0 && (
-        <Box
-          sx={{
-            flexGrow: 1,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 0.5,
-          }}
-        >
-          <Typography color="text.secondary" variant="body2">
-            No messages
-          </Typography>
-          <Typography color="text.secondary" variant="caption">
-            Polling every 3s
-          </Typography>
-        </Box>
-      )}
+      {queue && poller.messages.length === 0 && (() => {
+        const visible = parseInt(queue.QueueAttributes?.ApproximateNumberOfMessages ?? "0", 10);
+        const inFlight = parseInt(queue.QueueAttributes?.ApproximateNumberOfMessagesNotVisible ?? "0", 10);
+        const queueHasMessages = visible + inFlight > 0;
+        const loading = !poller.hasLoaded || queueHasMessages;
+        return (
+          <Box sx={{ flexGrow: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 0.5 }}>
+            {loading ? (
+              <CircularProgress size={20} thickness={2} />
+            ) : (
+              <>
+                <Typography color="text.secondary" variant="body2">No messages</Typography>
+                <Typography color="text.secondary" variant="caption">Polling every 1s</Typography>
+              </>
+            )}
+          </Box>
+        );
+      })()}
 
       {queue && poller.messages.length > 0 && (
         <Box sx={{ flexGrow: 1, overflowY: "auto", p: 1.5, display: "flex", flexDirection: "column", gap: 1 }}>

@@ -9,14 +9,12 @@ jest.mock("./QueueColumn", () => {
   return function MockQueueColumn({
     queue,
     queues,
-    globalPaused,
     onSelectQueue,
     showBorder,
     onRemove,
   }: {
     queue: { QueueName: string } | null;
     queues: { QueueName: string }[];
-    globalPaused: boolean;
     onSelectQueue: (name: string) => void;
     showBorder: boolean;
     onRemove?: () => void;
@@ -25,7 +23,6 @@ jest.mock("./QueueColumn", () => {
       <div data-testid="queue-column">
         <span data-testid="column-queue">{queue?.QueueName ?? "empty"}</span>
         <span data-testid="column-border">{showBorder ? "bordered" : "no-border"}</span>
-        <span data-testid="column-paused">{globalPaused ? "paused" : "running"}</span>
         {onRemove && (
           <button onClick={onRemove} aria-label="Close column">Remove</button>
         )}
@@ -167,40 +164,6 @@ describe("<Overview />", () => {
     await waitFor(() => {
       expect(screen.queryByText("Something broke")).not.toBeInTheDocument();
     });
-  });
-
-  it("passes globalPaused=false to columns initially", async () => {
-    await act(async () => {
-      render(<MemoryRouter initialEntries={["/?c=1"]}><Overview /></MemoryRouter>);
-    });
-
-    await waitFor(() => {
-      expect(screen.getByTestId("column-paused").textContent).toBe("running");
-    });
-  });
-
-  it("toggles globalPaused state via AppShell pause button", async () => {
-    await act(async () => {
-      render(<MemoryRouter initialEntries={["/?c=1"]}><Overview /></MemoryRouter>);
-    });
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Pause all polling")).toBeInTheDocument();
-    });
-
-    await act(async () => {
-      fireEvent.click(screen.getByLabelText("Pause all polling"));
-    });
-
-    expect(screen.getByLabelText("Resume all polling")).toBeInTheDocument();
-    expect(screen.getByTestId("column-paused").textContent).toBe("paused");
-
-    await act(async () => {
-      fireEvent.click(screen.getByLabelText("Resume all polling"));
-    });
-
-    expect(screen.getByLabelText("Pause all polling")).toBeInTheDocument();
-    expect(screen.getByTestId("column-paused").textContent).toBe("running");
   });
 
   it("last column has no border, non-last columns have border", async () => {
