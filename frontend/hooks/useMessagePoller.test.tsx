@@ -28,7 +28,7 @@ afterEach(() => {
 });
 
 describe("useMessagePoller", () => {
-  it("polls every 3 seconds when not paused", async () => {
+  it("polls every 1 second when not paused", async () => {
     const { result } = renderHook(() => useMessagePoller(mockQueue));
 
     // Wait for initial fetch
@@ -46,9 +46,9 @@ describe("useMessagePoller", () => {
       },
     ).length;
 
-    // Advance 9 seconds (3 polling intervals)
+    // Advance 3 seconds (3 polling intervals at 1s)
     await act(async () => {
-      jest.advanceTimersByTime(9000);
+      jest.advanceTimersByTime(3000);
       await Promise.resolve();
     });
 
@@ -65,7 +65,7 @@ describe("useMessagePoller", () => {
     expect(callsAfter - callsBefore).toBe(3);
   });
 
-  it("fires poll callback exactly 3 times in 9 seconds (exact count)", async () => {
+  it("fires poll callback exactly 3 times in 3 seconds (exact count)", async () => {
     const { result } = renderHook(() => useMessagePoller(mockQueue));
 
     // Drain mount-time useEffect poll
@@ -84,7 +84,7 @@ describe("useMessagePoller", () => {
     ).length;
 
     await act(async () => {
-      jest.advanceTimersByTime(9000);
+      jest.advanceTimersByTime(3000);
       await Promise.resolve();
     });
 
@@ -98,7 +98,7 @@ describe("useMessagePoller", () => {
       },
     ).length;
 
-    // Exactly 3 interval ticks in 9000ms at 3000ms interval
+    // Exactly 3 interval ticks in 3000ms at 1000ms interval
     expect(after - before).toBe(3);
   });
 

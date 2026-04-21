@@ -51,6 +51,12 @@ const useMessagePoller = (selectedQueue: Queue | null): UseMessagePollerReturn =
     });
   };
 
+  // Always points to the latest pollMessages without adding it as an effect dep.
+  // useInterval already does this internally; the ref lets the queue-switch effect
+  // call the current version without listing a recreated function in its dep array.
+  const pollMessagesRef = useRef(pollMessages);
+  pollMessagesRef.current = pollMessages;
+
   useInterval(async () => {
     await pollMessages();
   }, selectedQueue ? 1000 : null);
@@ -60,10 +66,9 @@ const useMessagePoller = (selectedQueue: Queue | null): UseMessagePollerReturn =
     setMessages([]);
     setLastUpdatedAt(null);
     setHasLoaded(false);
-    if (selectedQueue) {
-      pollMessages();
+    if (selectedQueue?.QueueName) {
+      pollMessagesRef.current();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedQueue?.QueueName]);
 
   const clearMessages = () => {
@@ -75,7 +80,7 @@ const useMessagePoller = (selectedQueue: Queue | null): UseMessagePollerReturn =
   const refreshMessages = () => {
     clearMessages();
     setHasLoaded(false);
-    pollMessages();
+    pollMessagesRef.current();
   };
 
   const removeMessage = (messageId: string) => {
