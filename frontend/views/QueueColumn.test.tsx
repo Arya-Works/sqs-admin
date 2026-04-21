@@ -17,11 +17,16 @@ const mockClearMessages = jest.fn();
 const mockRemoveMessage = jest.fn();
 const mockClearPollerError = jest.fn();
 
+const mockRefreshMessages = jest.fn();
+
 const mockPollerBase = {
   messages: [],
   lastUpdatedAt: null,
+  isLoading: false,
+  hasLoaded: true,
   consecutiveEmptyCount: { current: 0 },
   clearMessages: mockClearMessages,
+  refreshMessages: mockRefreshMessages,
   removeMessage: mockRemoveMessage,
   clearError: mockClearPollerError,
   error: "",
@@ -230,7 +235,7 @@ describe("<QueueColumn />", () => {
   it("shows 'No messages' when queue is selected but messages array is empty", () => {
     render(<QueueColumn {...defaultProps} queue={baseQueue} />);
     expect(screen.getByText("No messages")).toBeInTheDocument();
-    expect(screen.getByText("Polling every 3s")).toBeInTheDocument();
+    expect(screen.getByText("Polling every 1s")).toBeInTheDocument();
   });
 
   it("shows error alert from poller when poller.error is set", () => {

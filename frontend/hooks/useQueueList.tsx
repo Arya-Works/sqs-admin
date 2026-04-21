@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { callApi } from "../api/Http";
 import { Queue, AwsRegion } from "../types";
 
@@ -25,6 +25,9 @@ const useQueueList = (initialRegion?: string): UseQueueListReturn => {
   const [reloadCount, setReloadCount] = useState(0);
   // When initialRegion is set, hold off fetching queues until SetRegion finishes.
   const [readyForFetch, setReadyForFetch] = useState(!initialRegion);
+  // Snapshot the mount-time URL region so the setup effect runs exactly once.
+  // Subsequent region changes go through changeRegion, not this effect.
+  const initialRegionRef = useRef(initialRegion);
 
   const reloadQueues = () => setReloadCount(c => c + 1);
 
@@ -42,16 +45,15 @@ const useQueueList = (initialRegion?: string): UseQueueListReturn => {
         setIsLoading(false);
       },
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reloadCount, readyForFetch]);
 
   useEffect(() => {
-    if (initialRegion) {
+    if (initialRegionRef.current) {
       callApi({
         method: "POST",
         action: "SetRegion",
         queue: { QueueName: "" } as Queue,
-        region: initialRegion,
+        region: initialRegionRef.current,
         onSuccess: (data: AwsRegion) => {
           setRegion(data);
           setReadyForFetch(true);
@@ -67,7 +69,6 @@ const useQueueList = (initialRegion?: string): UseQueueListReturn => {
         onError: setError,
       });
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const clearError = () => setError("");
