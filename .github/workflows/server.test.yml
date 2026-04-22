@@ -21,7 +21,7 @@ jobs:
     env:
       AWS_ACCESS_KEY_ID: fake
       AWS_SECRET_ACCESS_KEY: fake
-      SQS_ENDPOINT_URL: https://localstack:4566
+      SQS_ENDPOINT_URL: http://localstack:4566
     steps:
       - uses: actions/checkout@v6
       - name: test

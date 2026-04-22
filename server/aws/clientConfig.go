@@ -2,8 +2,6 @@ package aws
 
 import (
 	"context"
-	"crypto/tls"
-	"net/http"
 	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -33,12 +31,6 @@ func buildClient(region string) *sqs.Client {
 			config.WithCredentialsProvider(
 				credentials.NewStaticCredentialsProvider("ACCESS_KEY", "SECRET_KEY", "TOKEN"),
 			),
-			// LocalStack uses a self-signed TLS cert — skip verification.
-			config.WithHTTPClient(&http.Client{
-				Transport: &http.Transport{
-					TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
-				},
-			}),
 		)
 		clientOpts = append(clientOpts, func(o *sqs.Options) {
 			o.BaseEndpoint = aws.String(endpointURL)
