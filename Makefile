@@ -15,4 +15,4 @@ down:
 	docker compose -f server/docker-compose.yml down
 
 test: up
-	cd server && go test ./... -v && cd ..
+	cd server && SQS_ENDPOINT_URL=http://localhost:4566 go test ./... -v && cd ..

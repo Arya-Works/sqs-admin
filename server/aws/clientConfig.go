@@ -16,9 +16,16 @@ func buildClient(region string) *sqs.Client {
 		config.WithRegion(region),
 	}
 
-	if os.Getenv("AWS_ACCESS_KEY_ID") == "" {
-		// No AWS credentials — default to LocalStack
-		endpointURL := utils.GetEnv("SQS_ENDPOINT_URL", "http://localhost:4566")
+	// SQS_ENDPOINT_URL explicitly set → always LocalStack (even if AWS creds exist).
+	// SQS_ENDPOINT_URL unset + no AWS creds → LocalStack at default localhost:4566.
+	// SQS_ENDPOINT_URL unset + AWS creds present → real AWS, default credential chain.
+	endpointURL := os.Getenv("SQS_ENDPOINT_URL")
+	useLocalStack := endpointURL != "" || os.Getenv("AWS_ACCESS_KEY_ID") == ""
+
+	if useLocalStack {
+		if endpointURL == "" {
+			endpointURL = "http://localhost:4566"
+		}
 		resolver := aws.EndpointResolverWithOptionsFunc(func(service, reg string, options ...interface{}) (aws.Endpoint, error) {
 			return aws.Endpoint{
 				PartitionID:   "aws",
@@ -33,7 +40,6 @@ func buildClient(region string) *sqs.Client {
 			config.WithEndpointResolverWithOptions(resolver),
 		)
 	}
-	// AWS_ACCESS_KEY_ID set — SDK uses default credential chain with real AWS endpoints.
 
 	cfg, _ := config.LoadDefaultConfig(context.TODO(), opts...)
 	return sqs.NewFromConfig(cfg)
