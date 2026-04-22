@@ -1,5 +1,7 @@
 name: Server tests
-on: push
+on:
+  push:
+  workflow_call:
 
 jobs:
   unit:
@@ -7,9 +9,8 @@ jobs:
     container: golang
     services:
       localstack:
-        image: localstack/localstack
+        image: localstack/localstack:2.3.2
         env:
-          LOCALSTACK_AUTH_TOKEN: ${{ secrets.LOCALSTACK_AUTH_TOKEN }}
           SERVICES: sqs
           EXTRA_CORS_ALLOWED_ORIGINS: "*"
     env:
