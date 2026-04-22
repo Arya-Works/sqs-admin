@@ -230,14 +230,13 @@ const QueueColumn = ({
               sx={{
                 border: "1px solid",
                 borderColor: "divider",
-                overflow: "hidden",
                 width: "100%",
                 minWidth: 0,
               }}
             >
               <AccordionSummary
                 expandIcon={<ExpandMoreIcon sx={{ fontSize: 16 }} />}
-                sx={{ minHeight: 48, px: 2, overflow: "hidden" }}
+                sx={{ minHeight: 48, px: 2 }}
               >
                 <Box sx={{ display: "flex", flexDirection: "column", width: "100%", overflow: "hidden", mr: 1, gap: 0.25 }}>
                   <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 1 }}>
@@ -265,7 +264,7 @@ const QueueColumn = ({
                   bgcolor: "#FAFAFA",
                   borderTop: "1px solid",
                   borderColor: "divider",
-                  overflow: "hidden",
+                  overflowX: "auto",
                 }}
               >
                 <Box
