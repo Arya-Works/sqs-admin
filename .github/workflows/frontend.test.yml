@@ -8,7 +8,7 @@ defaults:
     working-directory: frontend
 
 jobs:
-  unit:
+  unit-frontend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
