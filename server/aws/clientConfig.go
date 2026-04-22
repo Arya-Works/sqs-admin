@@ -2,6 +2,8 @@ package aws
 
 import (
 	"context"
+	"os"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -10,20 +12,30 @@ import (
 )
 
 func buildClient(region string) *sqs.Client {
-	resolver := aws.EndpointResolverWithOptionsFunc(func(service, reg string, options ...interface{}) (aws.Endpoint, error) {
-		return aws.Endpoint{
-			PartitionID:   "aws",
-			URL:           utils.GetEnv("SQS_ENDPOINT_URL", "http://localhost:4566"),
-			SigningRegion: region,
-		}, nil
-	})
-	cfg, _ := config.LoadDefaultConfig(context.TODO(),
-		config.WithCredentialsProvider(
-			credentials.NewStaticCredentialsProvider("ACCESS_KEY", "SECRET_KEY", "TOKEN"),
-		),
-		config.WithEndpointResolverWithOptions(resolver),
+	opts := []func(*config.LoadOptions) error{
 		config.WithRegion(region),
-	)
+	}
+
+	if os.Getenv("AWS_ACCESS_KEY_ID") == "" {
+		// No AWS credentials — default to LocalStack
+		endpointURL := utils.GetEnv("SQS_ENDPOINT_URL", "http://localhost:4566")
+		resolver := aws.EndpointResolverWithOptionsFunc(func(service, reg string, options ...interface{}) (aws.Endpoint, error) {
+			return aws.Endpoint{
+				PartitionID:   "aws",
+				URL:           endpointURL,
+				SigningRegion: region,
+			}, nil
+		})
+		opts = append(opts,
+			config.WithCredentialsProvider(
+				credentials.NewStaticCredentialsProvider("ACCESS_KEY", "SECRET_KEY", "TOKEN"),
+			),
+			config.WithEndpointResolverWithOptions(resolver),
+		)
+	}
+	// AWS_ACCESS_KEY_ID set — SDK uses default credential chain with real AWS endpoints.
+
+	cfg, _ := config.LoadDefaultConfig(context.TODO(), opts...)
 	return sqs.NewFromConfig(cfg)
 }
 
