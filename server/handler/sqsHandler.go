@@ -51,6 +51,13 @@ func SQSHandler() Handler {
 						Payload: nil,
 						Error:   err,
 					})
+				case "SetQueueAttributes":
+					log.Printf("Setting attributes for queue [%v]", payload.SqsQueue.QueueName)
+					err := aws.SetQueueAttributes(payload.SqsQueue.QueueUrl, *payload.SqsQueue.QueueAttributes)
+					checkForErrorAndRespondJSON(&writer, Response{
+						Payload: nil,
+						Error:   err,
+					})
 				case "PurgeQueue":
 					log.Printf("Purging queue [%v]", payload.SqsQueue.QueueName)
 					_, err := aws.PurgeQueue(payload.SqsQueue.QueueUrl)
@@ -64,11 +71,31 @@ func SQSHandler() Handler {
 						Payload: messages,
 						Error:   err,
 					})
+				case "DeleteMessage":
+					log.Printf("Deleting message [%v] from queue [%v]", payload.SqsMessage.MessageId, payload.SqsQueue.QueueUrl)
+					_, err := aws.DeleteMessage(payload.SqsQueue.QueueUrl, payload.SqsMessage.ReceiptHandle)
+					checkForErrorAndRespondJSON(&writer, Response{
+						Payload: nil,
+						Error:   err,
+					})
 				case "GetRegion":
 					region := utils.GetEnv("SQS_AWS_REGION", "eu-central-1")
 					response := types.AwsRegion{Region: region}
 					respondJSON(writer, Response{
 						Payload:    response,
+						StatusCode: http.StatusOK,
+					})
+				case "SetRegion":
+					if payload.Region == "" {
+						respondJSON(writer, Response{
+							Payload:    "region is required",
+							StatusCode: http.StatusBadRequest,
+						})
+						return
+					}
+					aws.SetRegion(payload.Region)
+					respondJSON(writer, Response{
+						Payload:    types.AwsRegion{Region: payload.Region},
 						StatusCode: http.StatusOK,
 					})
 				default:

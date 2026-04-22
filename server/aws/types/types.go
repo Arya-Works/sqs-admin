@@ -10,12 +10,15 @@ type SqsMessage struct {
 	MessageId         string            `json:"messageId"`
 	MessageBody       string            `json:"messageBody"`
 	MessageAttributes map[string]string `json:"messageAttributes"`
+	CustomAttributes  map[string]string `json:"customAttributes,omitempty"`
+	ReceiptHandle     string            `json:"receiptHandle"`
 }
 
 type Request struct {
 	Action     string     `json:"action"`
 	SqsQueue   SqsQueue   `json:"queue"`
 	SqsMessage SqsMessage `json:"message"`
+	Region     string     `json:"region"`
 }
 
 type AwsRegion struct {

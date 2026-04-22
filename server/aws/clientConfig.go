@@ -2,6 +2,8 @@ package aws
 
 import (
 	"context"
+	"os"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -9,22 +11,38 @@ import (
 	"github.com/pacoVK/utils"
 )
 
-var localStackResolver = aws.EndpointResolverWithOptionsFunc(func(service, region string, options ...interface{}) (aws.Endpoint, error) {
-	return aws.Endpoint{
-		PartitionID:   "aws",
-		URL:           utils.GetEnv("SQS_ENDPOINT_URL", "http://localhost:4566"),
-		SigningRegion: utils.GetEnv("SQS_AWS_REGION", "eu-central-1"),
-	}, nil
-})
+func buildClient(region string) *sqs.Client {
+	cfgOpts := []func(*config.LoadOptions) error{
+		config.WithRegion(region),
+	}
+	var clientOpts []func(*sqs.Options)
 
-var awsConfig, _ = config.LoadDefaultConfig(context.TODO(),
-	config.WithCredentialsProvider(
-		credentials.NewStaticCredentialsProvider("ACCESS_KEY", "SECRET_KEY", "TOKEN"),
-	),
-	config.WithEndpointResolverWithOptions(localStackResolver),
-	config.WithRegion(
-		utils.GetEnv("SQS_AWS_REGION", "eu-central-1"),
-	),
-)
+	// SQS_ENDPOINT_URL set → always LocalStack (overrides credential detection).
+	// SQS_ENDPOINT_URL unset + no AWS creds → LocalStack at default localhost:4566.
+	// SQS_ENDPOINT_URL unset + AWS creds present → real AWS, default credential chain.
+	endpointURL := os.Getenv("SQS_ENDPOINT_URL")
+	useLocalStack := endpointURL != "" || os.Getenv("AWS_ACCESS_KEY_ID") == ""
 
-var sqsClient = sqs.NewFromConfig(awsConfig)
+	if useLocalStack {
+		if endpointURL == "" {
+			endpointURL = "http://localhost:4566"
+		}
+		cfgOpts = append(cfgOpts,
+			config.WithCredentialsProvider(
+				credentials.NewStaticCredentialsProvider("ACCESS_KEY", "SECRET_KEY", "TOKEN"),
+			),
+		)
+		clientOpts = append(clientOpts, func(o *sqs.Options) {
+			o.BaseEndpoint = aws.String(endpointURL)
+		})
+	}
+
+	cfg, _ := config.LoadDefaultConfig(context.TODO(), cfgOpts...)
+	return sqs.NewFromConfig(cfg, clientOpts...)
+}
+
+var sqsClient = buildClient(utils.GetEnv("SQS_AWS_REGION", "eu-central-1"))
+
+func SetRegion(region string) {
+	sqsClient = buildClient(region)
+}

@@ -53,38 +53,51 @@ func receiveMessages(queueUrl *string) (*sqs.ReceiveMessageOutput, error) {
 		QueueUrl:              queueUrl,
 		AttributeNames:        []awsTypes.QueueAttributeName{awsTypes.QueueAttributeNameAll},
 		MessageAttributeNames: []string{"All"},
-		VisibilityTimeout:     1,
-		MaxNumberOfMessages:   10,
-		WaitTimeSeconds:       1,
+		VisibilityTimeout:   5,
+		MaxNumberOfMessages: 10,
 	})
 }
 
 func GetMessages(queueUrl string) ([]types.SqsMessage, error) {
-	var sqsMessages = make([]types.SqsMessage, 0)
-	messages, err := receiveMessages(&queueUrl)
-	if err != nil {
-		return nil, err
-	}
-	for _, message := range messages.Messages {
-		customAttributes := make(map[string]string)
-		for key, val := range message.MessageAttributes {
-			customAttributes[key] = *val.StringValue
-		}
-		if len(customAttributes) > 0 {
-			jsonString, err := json.Marshal(customAttributes)
-			if err != nil {
-				fmt.Println("Error marshaling map to JSON:", err)
-			}
-			message.Attributes["CustomAttributes"] = string(jsonString)
-		}
+	seen := make(map[string]bool)
+	result := make([]types.SqsMessage, 0)
 
-		sqsMessages = append(sqsMessages, types.SqsMessage{
-			MessageId:         *message.MessageId,
-			MessageBody:       *message.Body,
-			MessageAttributes: message.Attributes,
-		})
+	// Drain up to 10 batches (100 messages) so all visible messages are returned at once.
+	// Each batch makes its messages invisible for VisibilityTimeout seconds, so successive
+	// calls return distinct messages until the queue is drained.
+	for i := 0; i < 10; i++ {
+		batch, err := receiveMessages(&queueUrl)
+		if err != nil {
+			return nil, err
+		}
+		if len(batch.Messages) == 0 {
+			break
+		}
+		for _, message := range batch.Messages {
+			if message.MessageId == nil || seen[*message.MessageId] {
+				continue
+			}
+			if message.ReceiptHandle == nil {
+				log.Printf("Warning: message %v has nil ReceiptHandle, skipping", *message.MessageId)
+				continue
+			}
+			seen[*message.MessageId] = true
+			customAttrs := make(map[string]string)
+			for key, val := range message.MessageAttributes {
+				if val.StringValue != nil {
+					customAttrs[key] = *val.StringValue
+				}
+			}
+			result = append(result, types.SqsMessage{
+				MessageId:         *message.MessageId,
+				MessageBody:       *message.Body,
+				MessageAttributes: message.Attributes,
+				CustomAttributes:  customAttrs,
+				ReceiptHandle:     *message.ReceiptHandle,
+			})
+		}
 	}
-	return sqsMessages, nil
+	return result, nil
 }
 
 func PurgeQueue(queueUrl string) (*sqs.PurgeQueueOutput, error) {
@@ -97,6 +110,21 @@ func DeleteQueue(queueUrl string) (*sqs.DeleteQueueOutput, error) {
 	return sqsClient.DeleteQueue(context.TODO(), &sqs.DeleteQueueInput{
 		QueueUrl: &queueUrl,
 	})
+}
+
+func DeleteMessage(queueUrl string, receiptHandle string) (*sqs.DeleteMessageOutput, error) {
+	return sqsClient.DeleteMessage(context.TODO(), &sqs.DeleteMessageInput{
+		QueueUrl:      &queueUrl,
+		ReceiptHandle: &receiptHandle,
+	})
+}
+
+func SetQueueAttributes(queueUrl string, attributes map[string]string) error {
+	_, err := sqsClient.SetQueueAttributes(context.TODO(), &sqs.SetQueueAttributesInput{
+		QueueUrl:   &queueUrl,
+		Attributes: attributes,
+	})
+	return err
 }
 
 func CreateQueue(queueName string, attributes *map[string]string) (*sqs.CreateQueueOutput, error) {

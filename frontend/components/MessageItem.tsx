@@ -3,12 +3,9 @@ import {
   Accordion,
   AccordionDetails,
   AccordionSummary,
-  Box,
   Card,
   CardContent,
   CardHeader,
-  Divider,
-  Stack,
   Typography,
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
@@ -49,7 +46,7 @@ const MessageItem = (props: { data: SqsMessage }) => {
           `}
         />
         <CardContent>
-          {props.data.messageAttributes?.CustomAttributes ? (
+          {props.data.customAttributes && Object.keys(props.data.customAttributes).length > 0 ? (
             <Accordion>
               <AccordionSummary
                 expandIcon={<ExpandMoreIcon />}
@@ -59,21 +56,10 @@ const MessageItem = (props: { data: SqsMessage }) => {
                 <Typography>Message Attributes</Typography>
               </AccordionSummary>
               <AccordionDetails>
-                {Object.entries(
-                  // @ts-ignore
-                  JSON.parse(props.data.messageAttributes.CustomAttributes),
-                ).map(([key, value]) => {
-                  return (
-                    <Box key={key}>
-                      <Divider />
-                      <Stack direction="row" sx={{ ml: 0 }} spacing={2}>
-                        <Typography>Key: {key}</Typography>
-                        <Typography>Value: {value as string}</Typography>
-                      </Stack>
-                      <Divider />
-                    </Box>
-                  );
-                })}
+                <JSONTree
+                  data={props.data.customAttributes}
+                  keyPath={["attributes"]}
+                />
               </AccordionDetails>
             </Accordion>
           ) : null}

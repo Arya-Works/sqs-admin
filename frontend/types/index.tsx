@@ -35,6 +35,8 @@ export interface AwsRegion {
 export interface SqsMessage {
   messageBody: string;
   messageId?: string;
+  receiptHandle?: string;
+  customAttributes?: Record<string, string>;
   messageAttributes?:
     | {
         ApproximateFirstReceiveTimestamp?: string;
@@ -44,7 +46,6 @@ export interface SqsMessage {
         SenderId?: string;
         SentTimestamp?: string;
         SequenceNumber?: string;
-        CustomAttributes?: string | { [key: string]: string };
       }
     | undefined;
 }
@@ -57,9 +58,13 @@ export interface ApiCall {
     | "PurgeQueue"
     | "GetMessages"
     | "SendMessage"
-    | "GetRegion";
+    | "GetRegion"
+    | "SetRegion"
+    | "DeleteMessage"
+    | "SetQueueAttributes";
   queue?: Queue;
   message?: any;
+  region?: string;
   onSuccess: any;
   onError: (error: string) => void;
 }

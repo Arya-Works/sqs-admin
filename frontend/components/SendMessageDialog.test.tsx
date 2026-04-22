@@ -154,6 +154,39 @@ describe("<SendMessageDialog /> spec", () => {
     expect(screen.queryByDisplayValue("myVal")).not.toBeInTheDocument();
   });
 
+  it("editing an existing attribute value updates the attribute in-place (line 176)", () => {
+    // Line 176: the onChange for a rendered attribute TextField calls setMessageAttributes
+    // with the updated value for that key — this branch only runs after an attribute exists.
+    const mockSubmit = jest.fn();
+    render(
+      <SendMessageDialog disabled={false} onSubmit={mockSubmit} queue={standardQueue} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+    // Add an attribute so the dynamic TextField renders
+    fireEvent.change(screen.getByLabelText("Attribute key"), {
+      target: { value: "env" },
+    });
+    fireEvent.change(screen.getByLabelText("Attribute value"), {
+      target: { value: "staging" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "add" }));
+
+    // The newly rendered attribute TextField is identified by its label (the key)
+    const attrField = screen.getByLabelText("env") as HTMLInputElement;
+    expect(attrField).toHaveValue("staging");
+
+    // Edit the value in-place — triggers the onChange at line 176
+    fireEvent.change(attrField, { target: { value: "production" } });
+    expect(attrField).toHaveValue("production");
+
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    const submitted = mockSubmit.mock.calls[0][0];
+    expect(JSON.parse(submitted.messageAttributes.CustomAttributes)).toEqual({
+      env: "production",
+    });
+  });
+
   it("submits FIFO message with MessageGroupId", () => {
     const mockSubmit = jest.fn();
     render(
