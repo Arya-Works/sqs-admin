@@ -12,11 +12,12 @@ import (
 )
 
 func buildClient(region string) *sqs.Client {
-	opts := []func(*config.LoadOptions) error{
+	cfgOpts := []func(*config.LoadOptions) error{
 		config.WithRegion(region),
 	}
+	var clientOpts []func(*sqs.Options)
 
-	// SQS_ENDPOINT_URL explicitly set → always LocalStack (even if AWS creds exist).
+	// SQS_ENDPOINT_URL set → always LocalStack (overrides credential detection).
 	// SQS_ENDPOINT_URL unset + no AWS creds → LocalStack at default localhost:4566.
 	// SQS_ENDPOINT_URL unset + AWS creds present → real AWS, default credential chain.
 	endpointURL := os.Getenv("SQS_ENDPOINT_URL")
@@ -26,23 +27,21 @@ func buildClient(region string) *sqs.Client {
 		if endpointURL == "" {
 			endpointURL = "http://localhost:4566"
 		}
-		resolver := aws.EndpointResolverWithOptionsFunc(func(service, reg string, options ...interface{}) (aws.Endpoint, error) {
-			return aws.Endpoint{
-				PartitionID:   "aws",
-				URL:           endpointURL,
-				SigningRegion: region,
-			}, nil
-		})
-		opts = append(opts,
+		cfgOpts = append(cfgOpts,
 			config.WithCredentialsProvider(
 				credentials.NewStaticCredentialsProvider("ACCESS_KEY", "SECRET_KEY", "TOKEN"),
 			),
-			config.WithEndpointResolverWithOptions(resolver),
 		)
+		// Use BaseEndpoint (modern API) instead of the deprecated EndpointResolverWithOptions.
+		// The deprecated resolver caused SQS query-protocol serialisation to break with
+		// newer SDK versions, resulting in LocalStack receiving requests with no Action field.
+		clientOpts = append(clientOpts, func(o *sqs.Options) {
+			o.BaseEndpoint = aws.String(endpointURL)
+		})
 	}
 
-	cfg, _ := config.LoadDefaultConfig(context.TODO(), opts...)
-	return sqs.NewFromConfig(cfg)
+	cfg, _ := config.LoadDefaultConfig(context.TODO(), cfgOpts...)
+	return sqs.NewFromConfig(cfg, clientOpts...)
 }
 
 var sqsClient = buildClient(utils.GetEnv("SQS_AWS_REGION", "eu-central-1"))
