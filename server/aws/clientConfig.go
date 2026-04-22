@@ -2,6 +2,8 @@ package aws
 
 import (
 	"context"
+	"crypto/tls"
+	"net/http"
 	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -31,10 +33,13 @@ func buildClient(region string) *sqs.Client {
 			config.WithCredentialsProvider(
 				credentials.NewStaticCredentialsProvider("ACCESS_KEY", "SECRET_KEY", "TOKEN"),
 			),
+			// LocalStack uses a self-signed TLS cert — skip verification.
+			config.WithHTTPClient(&http.Client{
+				Transport: &http.Transport{
+					TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
+				},
+			}),
 		)
-		// Use BaseEndpoint (modern API) instead of the deprecated EndpointResolverWithOptions.
-		// The deprecated resolver caused SQS query-protocol serialisation to break with
-		// newer SDK versions, resulting in LocalStack receiving requests with no Action field.
 		clientOpts = append(clientOpts, func(o *sqs.Options) {
 			o.BaseEndpoint = aws.String(endpointURL)
 		})
