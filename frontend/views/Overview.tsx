@@ -30,7 +30,7 @@ const COUNT_PARAM = "c";
 const Overview = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const urlRegion = searchParams.get(REGION_PARAM) ?? undefined;
-  const { queues, region, isLoading, error: listError, reloadQueues, clearError: clearListError, changeRegion } = useQueueList(urlRegion);
+  const { queues, region, isLoading, isLocalStack, error: listError, reloadQueues, clearError: clearListError, changeRegion } = useQueueList(urlRegion);
 
   // Keep queue attributes (message counts) fresh for all queues, including unselected ones
   useInterval(reloadQueues, 10_000);
@@ -157,6 +157,7 @@ const Overview = () => {
           canAddColumn={columnCount < maxColumns}
           onAddColumn={addColumn}
           onRegionChange={handleRegionChange}
+          isLocalStack={isLocalStack}
         />
         {listError && (
           <Container maxWidth="md" sx={{ mt: 1 }}>
@@ -181,6 +182,8 @@ const Overview = () => {
               reloadQueues={reloadQueues}
               showBorder={i < columnCount - 1}
               onRemove={columnCount > 1 ? () => removeColumn(i) : undefined}
+              isLoadingQueues={isLoading}
+              isLocalStack={isLocalStack}
             />
           ))}
         </Box>

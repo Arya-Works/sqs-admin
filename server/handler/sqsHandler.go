@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/gorilla/mux"
 	"github.com/pacoVK/aws"
@@ -77,6 +78,11 @@ func SQSHandler() Handler {
 					checkForErrorAndRespondJSON(&writer, Response{
 						Payload: nil,
 						Error:   err,
+					})
+				case "GetMode":
+					respondJSON(writer, Response{
+						Payload:    map[string]bool{"localstack": os.Getenv("SQS_ENDPOINT_URL") != ""},
+						StatusCode: http.StatusOK,
 					})
 				case "GetRegion":
 					region := utils.GetEnv("SQS_AWS_REGION", "eu-central-1")

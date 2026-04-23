@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   Accordion,
   AccordionDetails,
@@ -40,6 +40,8 @@ interface QueueColumnProps {
   reloadQueues: () => void;
   showBorder: boolean;
   onRemove?: () => void;
+  isLoadingQueues?: boolean;
+  isLocalStack?: boolean;
 }
 
 const QueueColumn = ({
@@ -49,9 +51,26 @@ const QueueColumn = ({
   reloadQueues,
   showBorder,
   onRemove,
+  isLoadingQueues = false,
+  isLocalStack = true,
 }: QueueColumnProps) => {
   const poller = useMessagePoller(queue);
   const actions = useQueueActions(queue, reloadQueues, poller.clearMessages);
+  const [inputValue, setInputValue] = useState("");
+
+  // Stabilize the value reference so poll-driven re-renders (which return a new
+  // queue object with the same name) don't trigger MUI's internal inputValue reset.
+  const stableQueue = useMemo(() => queue, [queue?.QueueName]);
+
+  const filterQueues = (options: Queue[], { inputValue }: { inputValue: string }) => {
+    if (!inputValue) return options;
+    if (!inputValue.includes("*")) {
+      return options.filter((q) => q.QueueName.toLowerCase().includes(inputValue.toLowerCase()));
+    }
+    const pattern = inputValue.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+    const regex = new RegExp(pattern, "i");
+    return options.filter((q) => regex.test(q.QueueName));
+  };
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [bodyView, setBodyView] = useState<"tree" | "raw">("tree");
   const [copied, setCopied] = useState(false);
@@ -115,9 +134,14 @@ const QueueColumn = ({
           <Autocomplete
             options={queues}
             getOptionLabel={(q) => q.QueueName}
-            value={queue}
+            value={stableQueue}
             onChange={(_, q) => q && onSelectQueue(q.QueueName)}
-            disabled={queues.length === 0}
+            inputValue={inputValue}
+            onInputChange={(_, value) => setInputValue(value)}
+            filterOptions={filterQueues}
+            disabled={queues.length === 0 && !isLoadingQueues}
+            loading={isLoadingQueues}
+            loadingText="Loading queues…"
             disableClearable
             isOptionEqualToValue={(a, b) => a.QueueName === b.QueueName}
             size="small"
@@ -126,7 +150,7 @@ const QueueColumn = ({
               <TextField
                 {...params}
                 size="small"
-                placeholder="Select queue…"
+                placeholder={isLoadingQueues ? "" : "Select queue…"}
                 sx={{ "& .MuiInputBase-input": { fontFamily: "monospace", fontSize: "13px" } }}
               />
             )}
@@ -162,9 +186,11 @@ const QueueColumn = ({
             <Button size="small" variant="text" color="error" onClick={() => setConfirmPurge(true)}>
               Purge
             </Button>
-            <Button size="small" variant="text" color="error" onClick={() => setConfirmDeleteQueue(true)}>
-              Delete
-            </Button>
+            {isLocalStack && (
+              <Button size="small" variant="text" color="error" onClick={() => setConfirmDeleteQueue(true)}>
+                Delete
+              </Button>
+            )}
             <Box sx={{ ml: "auto", display: "flex", gap: 0.5 }}>
               <Button size="small" variant="text"
                 onClick={() => setBodyView("tree")}

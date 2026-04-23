@@ -24,10 +24,12 @@ const useMessagePoller = (selectedQueue: Queue | null): UseMessagePollerReturn =
   const [isLoading, setIsLoading] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
   const consecutiveEmptyCount = useRef(0);
+  const isPollingRef = useRef(false);
   const [error, setError] = useState("");
 
   const pollMessages = async () => {
-    if (!selectedQueue?.QueueUrl) return;
+    if (!selectedQueue?.QueueUrl || isPollingRef.current) return;
+    isPollingRef.current = true;
 
     setIsLoading(true);
     await callApi({
@@ -35,6 +37,7 @@ const useMessagePoller = (selectedQueue: Queue | null): UseMessagePollerReturn =
       action: "GetMessages",
       queue: selectedQueue,
       onSuccess: (data: SqsMessage[]) => {
+        isPollingRef.current = false;
         setIsLoading(false);
         setHasLoaded(true);
         if (data.length > 0) {
@@ -47,7 +50,7 @@ const useMessagePoller = (selectedQueue: Queue | null): UseMessagePollerReturn =
           // are temporarily invisible, not gone. Never auto-clear from polling.
         }
       },
-      onError: (err) => { setIsLoading(false); setHasLoaded(true); setError(err); },
+      onError: (err) => { isPollingRef.current = false; setIsLoading(false); setHasLoaded(true); setError(err); },
     });
   };
 
@@ -63,6 +66,7 @@ const useMessagePoller = (selectedQueue: Queue | null): UseMessagePollerReturn =
 
   useEffect(() => {
     consecutiveEmptyCount.current = 0;
+    isPollingRef.current = false;
     setMessages([]);
     setLastUpdatedAt(null);
     setHasLoaded(false);

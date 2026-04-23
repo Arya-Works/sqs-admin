@@ -6,6 +6,7 @@ interface UseQueueListReturn {
   queues: Queue[];
   region: AwsRegion;
   isLoading: boolean;
+  isLocalStack: boolean;
   disabledStatus: boolean;
   error: string;
   reloadQueues: () => void;
@@ -20,9 +21,13 @@ const useQueueList = (initialRegion?: string): UseQueueListReturn => {
   const [queues, setQueues] = useState<Queue[]>([]);
   const [region, setRegion] = useState<AwsRegion>({ region: "" });
   const [isLoading, setIsLoading] = useState(true);
+  const [isLocalStack, setIsLocalStack] = useState(true);
   const [disabledStatus, setDisabledStatus] = useState(true);
   const [error, setError] = useState("");
   const [reloadCount, setReloadCount] = useState(0);
+  const hasLoadedRef = useRef(false);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const knownModeRef = useRef<boolean | null>(null);
   // When initialRegion is set, hold off fetching queues until SetRegion finishes.
   const [readyForFetch, setReadyForFetch] = useState(!initialRegion);
   // Snapshot the mount-time URL region so the setup effect runs exactly once.
@@ -33,19 +38,46 @@ const useQueueList = (initialRegion?: string): UseQueueListReturn => {
 
   useEffect(() => {
     if (!readyForFetch) return;
+    if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
     callApi({
       method: "GET",
       onSuccess: (data: Queue[]) => {
+        hasLoadedRef.current = true;
         setQueues(data);
         setDisabledStatus(data.length === 0);
         setIsLoading(false);
       },
       onError: (err) => {
-        setError(err);
         setIsLoading(false);
+        if (hasLoadedRef.current) {
+          // Server restarted or unreachable — clear stale data and retry quickly.
+          setQueues([]);
+          setDisabledStatus(true);
+          retryTimerRef.current = setTimeout(reloadQueues, 2000);
+        } else {
+          setError(err);
+        }
       },
     });
   }, [reloadCount, readyForFetch]);
+
+  useEffect(() => {
+    callApi({
+      method: "POST",
+      action: "GetMode",
+      queue: { QueueName: "" } as Queue,
+      onSuccess: (data: { localstack: boolean }) => {
+        if (typeof data?.localstack !== "boolean") return;
+        if (knownModeRef.current !== null && knownModeRef.current !== data.localstack) {
+          window.location.reload();
+          return;
+        }
+        knownModeRef.current = data.localstack;
+        setIsLocalStack(data.localstack);
+      },
+      onError: () => {},
+    });
+  }, [reloadCount]);
 
   useEffect(() => {
     if (initialRegionRef.current) {
@@ -71,6 +103,8 @@ const useQueueList = (initialRegion?: string): UseQueueListReturn => {
     }
   }, []);
 
+  useEffect(() => () => { if (retryTimerRef.current) clearTimeout(retryTimerRef.current); }, []);
+
   const clearError = () => setError("");
 
   const changeRegion = (newRegion: string) => {
@@ -87,7 +121,7 @@ const useQueueList = (initialRegion?: string): UseQueueListReturn => {
     });
   };
 
-  return { queues, region, isLoading, disabledStatus, error, reloadQueues, clearError, changeRegion };
+  return { queues, region, isLoading, isLocalStack, disabledStatus, error, reloadQueues, clearError, changeRegion };
 };
 
 export default useQueueList;
