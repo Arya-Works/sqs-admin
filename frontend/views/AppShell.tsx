@@ -54,6 +54,7 @@ interface AppShellProps {
   onAddColumn: () => void;
   canAddColumn: boolean;
   onRegionChange: (region: string) => void;
+  isLocalStack: boolean;
 }
 
 /** Top AppBar: title, region chip, add-column, create queue. */
@@ -63,6 +64,7 @@ const AppShell = ({
   onAddColumn,
   canAddColumn,
   onRegionChange,
+  isLocalStack,
 }: AppShellProps) => {
   const [editing, setEditing] = useState(false);
   const [inputValue, setInputValue] = useState(region.region ?? "");
@@ -177,7 +179,7 @@ const AppShell = ({
               </IconButton>
             </span>
           </Tooltip>
-          <CreateQueueDialog onSubmit={onCreateQueue} />
+          {isLocalStack && <CreateQueueDialog onSubmit={onCreateQueue} />}
         </Box>
       </Toolbar>
     </AppBar>

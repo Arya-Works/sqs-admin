@@ -17,11 +17,9 @@ func buildClient(region string) *sqs.Client {
 	}
 	var clientOpts []func(*sqs.Options)
 
-	// SQS_ENDPOINT_URL set → always LocalStack (overrides credential detection).
-	// SQS_ENDPOINT_URL unset + no AWS creds → LocalStack at default localhost:4566.
-	// SQS_ENDPOINT_URL unset + AWS creds present → real AWS, default credential chain.
+	// SQS_ENDPOINT_URL set → LocalStack; unset → real AWS via default credential chain.
 	endpointURL := os.Getenv("SQS_ENDPOINT_URL")
-	useLocalStack := endpointURL != "" || os.Getenv("AWS_ACCESS_KEY_ID") == ""
+	useLocalStack := endpointURL != ""
 
 	if useLocalStack {
 		if endpointURL == "" {

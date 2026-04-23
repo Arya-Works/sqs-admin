@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   Accordion,
   AccordionDetails,
@@ -7,7 +7,6 @@ import {
   Box,
   Button,
   Chip,
-  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -23,11 +22,14 @@ import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import CloseIcon from "@mui/icons-material/Close";
 import RefreshIcon from "@mui/icons-material/Refresh";
+import PauseIcon from "@mui/icons-material/Pause";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import { JSONTree } from "react-json-tree";
 import useMessagePoller from "../hooks/useMessagePoller";
 import useQueueActions from "../hooks/useQueueActions";
 import SendMessageDialog from "../components/SendMessageDialog";
 import Alert from "../components/Alert";
+import LoadingDots from "../components/LoadingDots";
 import { Queue, SqsMessage } from "../types";
 import { formatRelativeTime, toLocaleString, getJsonOrRawData } from "../utils/time";
 import { callApi } from "../api/Http";
@@ -40,6 +42,8 @@ interface QueueColumnProps {
   reloadQueues: () => void;
   showBorder: boolean;
   onRemove?: () => void;
+  isLoadingQueues?: boolean;
+  isLocalStack?: boolean;
 }
 
 const QueueColumn = ({
@@ -49,9 +53,38 @@ const QueueColumn = ({
   reloadQueues,
   showBorder,
   onRemove,
+  isLoadingQueues = false,
+  isLocalStack = true,
 }: QueueColumnProps) => {
-  const poller = useMessagePoller(queue);
+  const [paused, setPaused] = useState(false);
+  const poller = useMessagePoller(queue, paused);
   const actions = useQueueActions(queue, reloadQueues, poller.clearMessages);
+  const [inputValue, setInputValue] = useState("");
+
+  // Stabilize the value reference so poll-driven re-renders (which return a new
+  // queue object with the same name) don't trigger MUI's internal inputValue reset.
+  const stableQueue = useMemo(() => queue, [queue?.QueueName]);
+
+  const filterQueues = (options: Queue[], { inputValue }: { inputValue: string }) => {
+    if (!inputValue) return options;
+    const lower = inputValue.toLowerCase();
+    if (!lower.includes("*")) {
+      return options.filter((q) => q.QueueName.toLowerCase().includes(lower));
+    }
+    // Wildcard match via sequential indexOf — O(n) per queue name, no RegExp, no backtracking.
+    return options.filter((q) => {
+      const name = q.QueueName.toLowerCase();
+      const parts = lower.split("*");
+      let pos = 0;
+      for (const part of parts) {
+        if (part === "") continue;
+        const idx = name.indexOf(part, pos);
+        if (idx === -1) return false;
+        pos = idx + part.length;
+      }
+      return true;
+    });
+  };
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [bodyView, setBodyView] = useState<"tree" | "raw">("tree");
   const [copied, setCopied] = useState(false);
@@ -115,9 +148,14 @@ const QueueColumn = ({
           <Autocomplete
             options={queues}
             getOptionLabel={(q) => q.QueueName}
-            value={queue}
+            value={stableQueue}
             onChange={(_, q) => q && onSelectQueue(q.QueueName)}
-            disabled={queues.length === 0}
+            inputValue={inputValue}
+            onInputChange={(_, value) => setInputValue(value)}
+            filterOptions={filterQueues}
+            disabled={queues.length === 0 && !isLoadingQueues}
+            loading={isLoadingQueues}
+            loadingText="Loading queues…"
             disableClearable
             isOptionEqualToValue={(a, b) => a.QueueName === b.QueueName}
             size="small"
@@ -126,7 +164,7 @@ const QueueColumn = ({
               <TextField
                 {...params}
                 size="small"
-                placeholder="Select queue…"
+                placeholder={isLoadingQueues ? "" : "Select queue…"}
                 sx={{ "& .MuiInputBase-input": { fontFamily: "monospace", fontSize: "13px" } }}
               />
             )}
@@ -153,6 +191,11 @@ const QueueColumn = ({
         </Box>
         {queue && (
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+            <Tooltip title={paused ? "Resume polling" : "Pause polling"}>
+              <IconButton size="small" onClick={() => setPaused(p => !p)} aria-label={paused ? "Resume polling" : "Pause polling"}>
+                {paused ? <PlayArrowIcon sx={{ fontSize: 16 }} /> : <PauseIcon sx={{ fontSize: 16 }} />}
+              </IconButton>
+            </Tooltip>
             <Tooltip title="Refresh messages">
               <IconButton size="small" onClick={poller.refreshMessages} aria-label="Refresh messages">
                 <RefreshIcon sx={{ fontSize: 16 }} />
@@ -162,9 +205,11 @@ const QueueColumn = ({
             <Button size="small" variant="text" color="error" onClick={() => setConfirmPurge(true)}>
               Purge
             </Button>
-            <Button size="small" variant="text" color="error" onClick={() => setConfirmDeleteQueue(true)}>
-              Delete
-            </Button>
+            {isLocalStack && (
+              <Button size="small" variant="text" color="error" onClick={() => setConfirmDeleteQueue(true)}>
+                Delete
+              </Button>
+            )}
             <Box sx={{ ml: "auto", display: "flex", gap: 0.5 }}>
               <Button size="small" variant="text"
                 onClick={() => setBodyView("tree")}
@@ -208,7 +253,7 @@ const QueueColumn = ({
         return (
           <Box sx={{ flexGrow: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 0.5 }}>
             {loading ? (
-              <CircularProgress size={20} thickness={2} />
+              <LoadingDots />
             ) : (
               <>
                 <Typography color="text.secondary" variant="body2">No messages</Typography>
