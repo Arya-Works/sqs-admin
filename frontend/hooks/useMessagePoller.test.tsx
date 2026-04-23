@@ -28,52 +28,78 @@ afterEach(() => {
 });
 
 describe("useMessagePoller", () => {
-  const countGetMessageCalls = () =>
-    (global.fetch as jest.Mock).mock.calls.filter(([, opts]: [string, RequestInit?]) => {
-      try { return JSON.parse(opts?.body as string).action === "GetMessages"; }
-      catch { return false; }
-    }).length;
+  it("polls every 1 second when not paused", async () => {
+    const { result } = renderHook(() => useMessagePoller(mockQueue));
 
-  // Advance time by 1s and flush the async chain so the next recursive
-  // setTimeout gets scheduled before the next advanceTimersByTime call.
-  const tick = async () => {
+    // Wait for initial fetch
     await act(async () => {
-      jest.advanceTimersByTime(1000);
-      await Promise.resolve();
-      await Promise.resolve();
       await Promise.resolve();
     });
-  };
 
-  it("polls every 1 second when not paused", async () => {
-    renderHook(() => useMessagePoller(mockQueue));
+    const callsBefore = (global.fetch as jest.Mock).mock.calls.filter(
+      ([, opts]: [string, RequestInit?]) => {
+        try {
+          return JSON.parse(opts?.body as string).action === "GetMessages";
+        } catch {
+          return false;
+        }
+      },
+    ).length;
 
-    // Drain mount-time immediate poll
-    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    // Advance 3 seconds (3 polling intervals at 1s)
+    await act(async () => {
+      jest.advanceTimersByTime(3000);
+      await Promise.resolve();
+    });
 
-    const callsBefore = countGetMessageCalls();
+    const callsAfter = (global.fetch as jest.Mock).mock.calls.filter(
+      ([, opts]: [string, RequestInit?]) => {
+        try {
+          return JSON.parse(opts?.body as string).action === "GetMessages";
+        } catch {
+          return false;
+        }
+      },
+    ).length;
 
-    await tick();
-    await tick();
-    await tick();
-
-    expect(countGetMessageCalls() - callsBefore).toBe(3);
+    expect(callsAfter - callsBefore).toBe(3);
   });
 
   it("fires poll callback exactly 3 times in 3 seconds (exact count)", async () => {
-    renderHook(() => useMessagePoller(mockQueue));
+    const { result } = renderHook(() => useMessagePoller(mockQueue));
 
-    // Drain mount-time immediate poll
-    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    // Drain mount-time useEffect poll
+    await act(async () => {
+      await Promise.resolve();
+    });
 
-    const before = countGetMessageCalls();
+    const before = (global.fetch as jest.Mock).mock.calls.filter(
+      ([, opts]: [string, RequestInit?]) => {
+        try {
+          return JSON.parse(opts?.body as string).action === "GetMessages";
+        } catch {
+          return false;
+        }
+      },
+    ).length;
 
-    await tick();
-    await tick();
-    await tick();
+    await act(async () => {
+      jest.advanceTimersByTime(3000);
+      await Promise.resolve();
+    });
 
-    // Exactly 3 scheduled polls in 3 × 1s ticks (recursive setTimeout, waits for response)
-    expect(countGetMessageCalls() - before).toBe(3);
+    const after = (global.fetch as jest.Mock).mock.calls.filter(
+      ([, opts]: [string, RequestInit?]) => {
+        try {
+          return JSON.parse(opts?.body as string).action === "GetMessages";
+        } catch {
+          return false;
+        }
+      },
+    ).length;
+
+    // Exactly 3 interval ticks in 3000ms at 1000ms interval
+    expect(after - before).toBe(3);
   });
 
   it("fires poll exactly once on queue switch (useEffect one-shot)", async () => {
