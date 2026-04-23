@@ -1,6 +1,6 @@
 services:
   sqs-admin:
-    image: pacovk/sqs-admin
+    image: ghcr.io/arya-works/sqs-admin:latest
     ports:
       - "3999:3999"
     environment:

@@ -13,7 +13,7 @@ readme = {file = "README.md", content-type = "text/markdown; charset=UTF-8"}
 requires-python = ">=3.8"
 license = {text = "Apache-2.0"}
 authors = [
-    { name = "Pascal Euhus", email = "pascal.euhus@gmx.de" }
+    { name = "Arya Works" }
 ]
 keywords = ["localstack", "localstack-extension", "extension"]
 classifiers = []
@@ -26,7 +26,7 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/pacovk/sqs-admin"
+Homepage = "https://github.com/Arya-Works/sqs-admin"
 
 [project.optional-dependencies]
 dev = [
