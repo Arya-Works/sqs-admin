@@ -7,7 +7,6 @@ import {
   Box,
   Button,
   Chip,
-  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -23,11 +22,14 @@ import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import CloseIcon from "@mui/icons-material/Close";
 import RefreshIcon from "@mui/icons-material/Refresh";
+import PauseIcon from "@mui/icons-material/Pause";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import { JSONTree } from "react-json-tree";
 import useMessagePoller from "../hooks/useMessagePoller";
 import useQueueActions from "../hooks/useQueueActions";
 import SendMessageDialog from "../components/SendMessageDialog";
 import Alert from "../components/Alert";
+import LoadingDots from "../components/LoadingDots";
 import { Queue, SqsMessage } from "../types";
 import { formatRelativeTime, toLocaleString, getJsonOrRawData } from "../utils/time";
 import { callApi } from "../api/Http";
@@ -54,7 +56,8 @@ const QueueColumn = ({
   isLoadingQueues = false,
   isLocalStack = true,
 }: QueueColumnProps) => {
-  const poller = useMessagePoller(queue);
+  const [paused, setPaused] = useState(false);
+  const poller = useMessagePoller(queue, paused);
   const actions = useQueueActions(queue, reloadQueues, poller.clearMessages);
   const [inputValue, setInputValue] = useState("");
 
@@ -177,6 +180,11 @@ const QueueColumn = ({
         </Box>
         {queue && (
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+            <Tooltip title={paused ? "Resume polling" : "Pause polling"}>
+              <IconButton size="small" onClick={() => setPaused(p => !p)} aria-label={paused ? "Resume polling" : "Pause polling"}>
+                {paused ? <PlayArrowIcon sx={{ fontSize: 16 }} /> : <PauseIcon sx={{ fontSize: 16 }} />}
+              </IconButton>
+            </Tooltip>
             <Tooltip title="Refresh messages">
               <IconButton size="small" onClick={poller.refreshMessages} aria-label="Refresh messages">
                 <RefreshIcon sx={{ fontSize: 16 }} />
@@ -234,7 +242,7 @@ const QueueColumn = ({
         return (
           <Box sx={{ flexGrow: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 0.5 }}>
             {loading ? (
-              <CircularProgress size={20} thickness={2} />
+              <LoadingDots />
             ) : (
               <>
                 <Typography color="text.secondary" variant="body2">No messages</Typography>

@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from "react";
-import useInterval from "./useInterval";
 import { callApi } from "../api/Http";
 import { Queue, SqsMessage } from "../types";
 
@@ -17,8 +16,8 @@ interface UseMessagePollerReturn {
 }
 
 /** Polls SQS for messages every second. Accumulates messages — only clears on queue switch,
- *  purge, or explicit delete. */
-const useMessagePoller = (selectedQueue: Queue | null): UseMessagePollerReturn => {
+ *  purge, or explicit delete. Pass paused=true to freeze the message list for inspection. */
+const useMessagePoller = (selectedQueue: Queue | null, paused = false): UseMessagePollerReturn => {
   const [messages, setMessages] = useState<SqsMessage[]>([]);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -60,9 +59,24 @@ const useMessagePoller = (selectedQueue: Queue | null): UseMessagePollerReturn =
   const pollMessagesRef = useRef(pollMessages);
   pollMessagesRef.current = pollMessages;
 
-  useInterval(async () => {
-    await pollMessages();
-  }, selectedQueue ? 1000 : null);
+  // Recursive polling: wait for the response, then schedule the next poll 1s later.
+  // This prevents request pile-up on slow backends (e.g. real AWS).
+  useEffect(() => {
+    if (!selectedQueue?.QueueName || paused) return;
+    let active = true;
+    let timerId: ReturnType<typeof setTimeout> | null = null;
+
+    const run = async () => {
+      await pollMessagesRef.current();
+      if (active) timerId = setTimeout(run, 1000);
+    };
+
+    timerId = setTimeout(run, 1000);
+    return () => {
+      active = false;
+      if (timerId) clearTimeout(timerId);
+    };
+  }, [selectedQueue?.QueueName, paused]);
 
   useEffect(() => {
     consecutiveEmptyCount.current = 0;

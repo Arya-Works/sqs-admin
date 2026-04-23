@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
@@ -48,14 +49,24 @@ func ListQueues() []types.SqsQueue {
 	return queues
 }
 
-func receiveMessages(queueUrl *string) (*sqs.ReceiveMessageOutput, error) {
+func receiveMessages(queueUrl *string, waitSeconds int32) (*sqs.ReceiveMessageOutput, error) {
 	return sqsClient.ReceiveMessage(context.TODO(), &sqs.ReceiveMessageInput{
 		QueueUrl:              queueUrl,
 		AttributeNames:        []awsTypes.QueueAttributeName{awsTypes.QueueAttributeNameAll},
 		MessageAttributeNames: []string{"All"},
-		VisibilityTimeout:   5,
-		MaxNumberOfMessages: 10,
+		VisibilityTimeout:     5,
+		MaxNumberOfMessages:   10,
+		WaitTimeSeconds:       waitSeconds,
 	})
+}
+
+// longPollSeconds is 0 for LocalStack (fast local calls) and 5 for real AWS
+// so the first ReceiveMessage holds the connection rather than immediately returning empty.
+func longPollSeconds() int32 {
+	if os.Getenv("SQS_ENDPOINT_URL") != "" {
+		return 0
+	}
+	return 5
 }
 
 func GetMessages(queueUrl string) ([]types.SqsMessage, error) {
@@ -63,10 +74,13 @@ func GetMessages(queueUrl string) ([]types.SqsMessage, error) {
 	result := make([]types.SqsMessage, 0)
 
 	// Drain up to 10 batches (100 messages) so all visible messages are returned at once.
-	// Each batch makes its messages invisible for VisibilityTimeout seconds, so successive
-	// calls return distinct messages until the queue is drained.
+	// First call uses long polling; subsequent drain calls skip the wait since messages are known present.
 	for i := 0; i < 10; i++ {
-		batch, err := receiveMessages(&queueUrl)
+		waitTime := int32(0)
+		if i == 0 {
+			waitTime = longPollSeconds()
+		}
+		batch, err := receiveMessages(&queueUrl, waitTime)
 		if err != nil {
 			return nil, err
 		}
