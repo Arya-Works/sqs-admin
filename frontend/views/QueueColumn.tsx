@@ -67,12 +67,23 @@ const QueueColumn = ({
 
   const filterQueues = (options: Queue[], { inputValue }: { inputValue: string }) => {
     if (!inputValue) return options;
-    if (!inputValue.includes("*")) {
-      return options.filter((q) => q.QueueName.toLowerCase().includes(inputValue.toLowerCase()));
+    const lower = inputValue.toLowerCase();
+    if (!lower.includes("*")) {
+      return options.filter((q) => q.QueueName.toLowerCase().includes(lower));
     }
-    const pattern = inputValue.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
-    const regex = new RegExp(pattern, "i");
-    return options.filter((q) => regex.test(q.QueueName));
+    // Wildcard match via sequential indexOf — O(n) per queue name, no RegExp, no backtracking.
+    return options.filter((q) => {
+      const name = q.QueueName.toLowerCase();
+      const parts = lower.split("*");
+      let pos = 0;
+      for (const part of parts) {
+        if (part === "") continue;
+        const idx = name.indexOf(part, pos);
+        if (idx === -1) return false;
+        pos = idx + part.length;
+      }
+      return true;
+    });
   };
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [bodyView, setBodyView] = useState<"tree" | "raw">("tree");
